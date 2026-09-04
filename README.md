@@ -16,15 +16,20 @@ this was built on.
 
 ## Requirements
 
-- Notepad++ 8.x, 64-bit.
-- Node 18 or newer, and the server: `npm install -g @px-lsp/server`. The plugin
-  never bundles or downloads it.
+Notepad++ 8.x, 64-bit. Nothing else: the release zip carries the language
+server and the Node runtime it needs (an unmodified official nodejs.org
+win-x64 build), so no Node and no npm install is required.
 
 ## Install
 
-1. Build (see below) or take `PxToolkit.dll` from the CI artifact.
-2. Copy it to `plugins\PxToolkit\PxToolkit.dll` inside your Notepad++ folder.
+1. Take `PxToolkit-<version>-win-x64.zip` from the CI artifact, or build one
+   with `package.cmd` (see below).
+2. Extract it whole into the `plugins\` folder inside your Notepad++ folder. It
+   contains one `PxToolkit\` folder holding the DLL and the server beside it.
 3. Restart Notepad++.
+
+The DLL alone will not work: without its `px-lsp\` neighbour the plugin finds no
+server and says so.
 
 ## Settings
 
@@ -34,11 +39,16 @@ pick `Restart server`, which is what applies changes.
 
 | Key | Meaning |
 |---|---|
-| `serverCommand` | Command that starts the server. Empty looks for `px-lsp.cmd` or `px-lsp` on PATH. |
+| `serverCommand` | Command that starts the server. Empty uses the bundled `px-lsp\px-lsp.cmd` next to the DLL, and falls back to `px-lsp` on PATH. |
 | `gameId` | `ck3`, `vic3` or `eu5`. One server instance serves one game. |
 | `gamePath` | The game's `game/` folder, the source of vanilla definitions. |
 | `logsPath` | Folder holding the `script_docs` dumps the game writes. |
 | `locLanguage` | Localization language for previews and coverage, default `english`. |
+
+The zip carries px-lsp 0.3.0. To run a newer server without waiting for a new
+plugin release, install it (`npm install -g @px-lsp/server`) and either delete
+the `px-lsp\` folder next to the DLL or point `serverCommand` at the launcher
+you want.
 
 ## What works
 
@@ -103,6 +113,16 @@ That produces `build\x64\Release\PxToolkit.dll` and
 `build\x64\Release\PxToolkitTests.exe`. Run the exe: it covers the file
 classification, the offset conversion, the frame parser and the markdown
 reduction, which is all the logic that does not need a running editor.
+
+```
+package.cmd
+```
+
+builds, then downloads the pinned px-lsp win-x64 payload with `curl.exe`
+(cached in `build\`, so it is fetched once), unpacks it with `tar.exe` and
+writes `build\PxToolkit-<version>-win-x64.zip`. The plugin version and the
+server release it pins sit at the top of that file. The payload is never
+committed here.
 
 ## License
 

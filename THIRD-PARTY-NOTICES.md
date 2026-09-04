@@ -49,11 +49,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## px-lsp
+## px-lsp and Node.js (packaged zip only)
 
-`@px-lsp/server` is not bundled and is not downloaded at runtime. The plugin
-starts whatever `px-lsp` the user installed. It is GPL-3.0-or-later, from the
-Paradox Modding Toolkit: <https://github.com/JDeffner/paradox-modding-toolkit>.
+Neither is vendored into this repository and neither is downloaded at runtime.
+`package.cmd` fetches one pinned artifact, `px-lsp-win-x64-0.3.0.zip` from
+release `v0.3.5` of
+<https://github.com/JDeffner/paradox-modding-toolkit>, and lays it down as
+`PxToolkit\px-lsp\` inside the plugin zip. That zip therefore redistributes:
+
+- **`@px-lsp/server`**, GPL-3.0-or-later, from the Paradox Modding Toolkit. Its
+  own `LICENSE` and `THIRD-PARTY-NOTICES.md` travel with it in `px-lsp\`.
+- **Node.js** (`node.exe`), an unmodified official nodejs.org win-x64 build,
+  under the license text in the accompanying `px-lsp\NODE-LICENSE`. Node.js is
+  Copyright Node.js contributors and others: <https://nodejs.org>.
+
+A plugin built from source alone carries neither: the DLL starts whichever
+`px-lsp` it finds beside itself or on PATH.
 
 ## Derived data
 

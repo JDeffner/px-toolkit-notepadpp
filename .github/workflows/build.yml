@@ -19,7 +19,13 @@ jobs:
         run: .\build\x64\Release\PxToolkitTests.exe
         shell: cmd
 
+      # Rebuilds, then downloads the pinned px-lsp payload and assembles the
+      # zip a user extracts into plugins\.
+      - name: Package
+        run: .\package.cmd
+        shell: cmd
+
       - uses: actions/upload-artifact@v4
         with:
           name: PxToolkit-x64
-          path: build/x64/Release/PxToolkit.dll
+          path: build/PxToolkit-*-win-x64.zip

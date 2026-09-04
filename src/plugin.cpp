@@ -214,10 +214,36 @@ DocState* docFor(const std::wstring& path) {
 
 // ------------------------------------------------------------ server startup
 
-// Resolve the launcher. npm's global bin holds px-lsp.cmd on Windows; the
-// release zip ships one too. Neither is bundled here on purpose.
+// The folder holding this DLL, taken from an address inside the module rather
+// than from the HINSTANCE DllMain stored: it answers correctly whatever has run
+// so far, and it is what the packaged server hangs off.
+std::wstring moduleDir() {
+    HMODULE self = nullptr;
+    if (!::GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&moduleDir), &self)) {
+        return std::wstring();
+    }
+    wchar_t path[MAX_PATH] = {0};
+    const DWORD len = ::GetModuleFileNameW(self, path, MAX_PATH);
+    if (len == 0 || len >= MAX_PATH) return std::wstring();
+    const std::wstring full(path, len);
+    const size_t slash = full.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return std::wstring();
+    return full.substr(0, slash);
+}
+
+// Resolve the launcher: the setting, then the server the plugin zip lays down
+// beside the DLL, then npm's global bin on PATH (which holds px-lsp.cmd).
 std::wstring resolveServerCommand(const std::wstring& configured) {
     if (!configured.empty()) return configured;
+
+    const std::wstring dir = moduleDir();
+    if (!dir.empty()) {
+        const std::wstring bundled = dir + L"\\px-lsp\\px-lsp.cmd";
+        if (::GetFileAttributesW(bundled.c_str()) != INVALID_FILE_ATTRIBUTES) return bundled;
+    }
+
     for (const wchar_t* name : {L"px-lsp.cmd", L"px-lsp.exe", L"px-lsp.bat"}) {
         wchar_t found[MAX_PATH] = {0};
         if (::SearchPathW(nullptr, name, nullptr, MAX_PATH, found, nullptr) > 0) return std::wstring(found);
@@ -243,8 +269,10 @@ void startServer(const std::wstring& modPath) {
         if (!g_serverMissingReported) {
             g_serverMissingReported = true;
             ::MessageBoxW(g_npp._nppHandle,
-                          L"px-lsp was not found on PATH.\r\n\r\n"
-                          L"Install it with:\r\n    npm install -g @px-lsp/server\r\n\r\n"
+                          L"px-lsp was not found.\r\n\r\n"
+                          L"The plugin zip carries the server in px-lsp\\ next to PxToolkit.dll. "
+                          L"Extract the whole zip into the plugins folder, not the DLL alone.\r\n\r\n"
+                          L"Otherwise install the server with:\r\n    npm install -g @px-lsp/server\r\n\r\n"
                           L"Or set serverCommand in px-toolkit.ini "
                           L"(Plugins > Paradox Modding Toolkit > Open settings).",
                           kPluginName, MB_OK | MB_ICONINFORMATION);
