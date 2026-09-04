@@ -1,0 +1,25 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (Release x64)
+        run: .\build.cmd
+        shell: cmd
+
+      - name: Run tests
+        run: .\build\x64\Release\PxToolkitTests.exe
+        shell: cmd
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PxToolkit-x64
+          path: build/x64/Release/PxToolkit.dll
