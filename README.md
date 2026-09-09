@@ -10,9 +10,7 @@ example of wiring a language server into an editor that gives you nothing but a
 DLL entry point. If you want a generic LSP client for Notepad++ instead of this
 Paradox-specific one, use [Ekopalypse's NppLspClient](https://github.com/Ekopalypse/NppLspClient).
 
-**Status:** compiles and passes its unit tests. Nothing here has been tried in a
-running Notepad++ yet, because no Notepad++ install was available on the machine
-this was built on.
+**Status:** 0.1.0 includes px-lsp 0.3.3, a bundled Node runtime and automatic LSP updates. Built and tested on Windows 10, with a live connection and mod indexing verified in Notepad++.
 
 ## Requirements
 
@@ -22,7 +20,7 @@ win-x64 build), so no Node and no npm install is required.
 
 ## Install
 
-1. Take `PxToolkit-<version>-win-x64.zip` from the CI artifact, or build one
+1. Take `PxToolkit-<version>-win-x64.zip` from [Releases](https://github.com/JDeffner/px-toolkit-notepadpp/releases), or build one
    with `package.cmd` (see below).
 2. Extract it whole into the `plugins\` folder inside your Notepad++ folder. It
    contains one `PxToolkit\` folder holding the DLL and the server beside it.
@@ -45,10 +43,13 @@ pick `Restart server`, which is what applies changes.
 | `logsPath` | Folder holding the `script_docs` dumps the game writes. |
 | `locLanguage` | Localization language for previews and coverage, default `english`. |
 
-The zip carries px-lsp 0.3.0. To run a newer server without waiting for a new
-plugin release, install it (`npm install -g @px-lsp/server`) and either delete
-the `px-lsp\` folder next to the DLL or point `serverCommand` at the launcher
-you want.
+## Automatic LSP updates
+
+The zip includes px-lsp 0.3.3. When the plugin first starts a server in a Notepad++ session, it checks the latest stable upstream release in the background, at most once every 24 hours. Editing can start immediately with the bundled or previously downloaded server.
+
+Updates go into `%LOCALAPPDATA%\PxToolkit\servers`, so they need no administrator access. The updater verifies GitHub's SHA-256 digest, checks the payload files and runs the server's version command before activating a download. It keeps existing versions and never replaces a running server. The new version starts when you next launch Notepad++ or select **Restart server**. Network errors and failed validation leave the current server available.
+
+`update.log` in that cache folder records downloads and failures. To force a check, run `update-server.ps1 -Force` from the installed `PxToolkit` folder. A non-empty `serverCommand` selects your own server and disables the automatic update path. Plugin DLL updates still require a new plugin installation.
 
 ## What works
 
@@ -120,8 +121,7 @@ package.cmd
 
 builds, then downloads the pinned px-lsp win-x64 payload with `curl.exe`
 (cached in `build\`, so it is fetched once), unpacks it with `tar.exe` and
-writes `build\PxToolkit-<version>-win-x64.zip`. The plugin version and the
-server release it pins sit at the top of that file. The payload is never
+writes `build\PxToolkit-<version>-win-x64.zip`. The plugin version, upstream release tag and checksum are in `package.ps1`; the bundled server version is in `server-version.txt`. The payload is never
 committed here.
 
 ## License

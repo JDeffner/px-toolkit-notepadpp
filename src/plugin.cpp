@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cwctype>
+#include <fstream>
+#include <array>
 #include <map>
 #include <string>
 #include <vector>
@@ -90,6 +92,7 @@ px::Settings g_settings;
 px::LspClient g_client;
 FILE* g_logFile = nullptr;
 bool g_serverMissingReported = false;
+bool g_ready = false;
 std::wstring g_startedForMod;
 
 std::map<std::wstring, DocState> g_docs;               // key: lowercased full path
@@ -233,13 +236,60 @@ std::wstring moduleDir() {
     return full.substr(0, slash);
 }
 
-// Resolve the launcher: the setting, then the server the plugin zip lays down
+std::array<unsigned, 3> serverVersion(const std::wstring& path, std::wstring& text) {
+    std::wifstream input(path);
+    std::getline(input, text);
+    if (!text.empty() && text.back() == L'\r') text.pop_back();
+    std::array<unsigned, 3> version{};
+    wchar_t extra;
+    if (text.empty() || text.find_first_not_of(L"0123456789.") != std::wstring::npos ||
+        swscanf_s(text.c_str(), L"%u.%u.%u%c", &version[0], &version[1], &version[2], &extra, 1u) != 3) {
+        text.clear();
+        return {};
+    }
+    return version;
+}
+
+std::wstring updatedServer(const std::wstring& dir) {
+    wchar_t local[MAX_PATH] = {};
+    const DWORD len = ::GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
+    if (!len || len >= MAX_PATH) return {};
+    const std::wstring cache = std::wstring(local) + L"\\PxToolkit\\servers";
+    // The updater never inherits the LSP pipes and never delays editor startup.
+    static bool checked = false;
+    if (!checked) {
+        checked = true;
+        wchar_t system[MAX_PATH] = {};
+        ::GetSystemDirectoryW(system, MAX_PATH);
+        const std::wstring exe = std::wstring(system) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+        std::wstring command = L"\"" + exe + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + dir + L"\\update-server.ps1\"";
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        PROCESS_INFORMATION process{};
+        if (::CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                             nullptr, dir.c_str(), &startup, &process)) {
+            ::CloseHandle(process.hThread);
+            ::CloseHandle(process.hProcess);
+        }
+    }
+    std::wstring cached, bundled;
+    const auto cachedVersion = serverVersion(cache + L"\\current.txt", cached);
+    const auto bundledVersion = serverVersion(dir + L"\\server-version.txt", bundled);
+    if (cached.empty() || bundled.empty() || cachedVersion <= bundledVersion) return {};
+    const std::wstring launcher = cache + L"\\" + cached + L"\\px-lsp.cmd";
+    if (::GetFileAttributesW(launcher.c_str()) == INVALID_FILE_ATTRIBUTES) return {};
+    return launcher;
+}
+
+// Resolve the launcher: the setting, then an update, then the server the plugin zip lays down
 // beside the DLL, then npm's global bin on PATH (which holds px-lsp.cmd).
 std::wstring resolveServerCommand(const std::wstring& configured) {
     if (!configured.empty()) return configured;
 
     const std::wstring dir = moduleDir();
     if (!dir.empty()) {
+        const std::wstring updated = updatedServer(dir);
+        if (!updated.empty()) return updated;
         const std::wstring bundled = dir + L"\\px-lsp\\px-lsp.cmd";
         if (::GetFileAttributesW(bundled.c_str()) != INVALID_FILE_ATTRIBUTES) return bundled;
     }
@@ -286,6 +336,7 @@ void startServer(const std::wstring& modPath) {
         return;
     }
     g_startedForMod = modPath;
+    appendLog("Starting px-lsp: " + toUtf8(launcher));
 
     // storageDir must exist: the server swallows every cache write failure, so
     // a missing folder costs the script_docs cache silently.
@@ -848,6 +899,7 @@ void onReady() {
     setUpIndicators(g_npp._scintillaSecondHandle);
     ::SendMessage(g_npp._scintillaMainHandle, SCI_SETMOUSEDWELLTIME, 500, 0);
     ::SendMessage(g_npp._scintillaSecondHandle, SCI_SETMOUSEDWELLTIME, 500, 0);
+    g_ready = true;
     openDocument(currentPath());
 }
 
@@ -881,6 +933,9 @@ extern "C" __declspec(dllexport) BOOL isUnicode() { return TRUE; }
 extern "C" __declspec(dllexport) LRESULT messageProc(UINT, WPARAM, LPARAM) { return TRUE; }
 
 extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
+    // Session restoration activates buffers before NPPN_READY. The config and
+    // response window must exist before a buffer can start the language server.
+    if (!g_ready && notify->nmhdr.code != NPPN_READY) return;
     switch (notify->nmhdr.code) {
         case NPPN_READY:
             onReady();

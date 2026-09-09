@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 (2026-09-09)
+
+- Wait for Notepad++ initialization before starting the server for restored tabs.
+- Add background LSP updates with a daily check, SHA-256 verification, a version check and offline fallback. Updates apply on the next server start.
+- Bundle px-lsp 0.3.3 and include the plugin license notices in the release zip.
 
 - The release zip carries the server. `package.cmd` assembles `PxToolkit.dll`
   plus the pinned px-lsp win-x64 payload (server and Node runtime), and the
