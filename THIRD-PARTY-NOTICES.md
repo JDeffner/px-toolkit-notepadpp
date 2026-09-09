@@ -51,11 +51,7 @@ SOFTWARE.
 
 ## px-lsp and Node.js (packaged zip only)
 
-Neither is vendored into this repository and neither is downloaded at runtime.
-`package.cmd` fetches one pinned artifact, `px-lsp-win-x64-0.3.0.zip` from
-release `v0.3.5` of
-<https://github.com/JDeffner/paradox-modding-toolkit>, and lays it down as
-`PxToolkit\px-lsp\` inside the plugin zip. That zip therefore redistributes:
+Neither is vendored into this repository. `package.cmd` fetches the pinned Windows payload from <https://github.com/JDeffner/paradox-modding-toolkit> and puts it in `PxToolkit\px-lsp\` inside the plugin zip. `server-version.txt` records the bundled server version; `package.ps1` records the upstream release and SHA-256 digest. The automatic updater downloads newer stable payloads into the user's local cache and preserves their accompanying license files. These payloads redistribute:
 
 - **`@px-lsp/server`**, GPL-3.0-or-later, from the Paradox Modding Toolkit. Its
   own `LICENSE` and `THIRD-PARTY-NOTICES.md` travel with it in `px-lsp\`.
