@@ -10,7 +10,7 @@ example of wiring a language server into an editor that gives you nothing but a
 DLL entry point. If you want a generic LSP client for Notepad++ instead of this
 Paradox-specific one, use [Ekopalypse's NppLspClient](https://github.com/Ekopalypse/NppLspClient).
 
-**Status:** 0.1.0 includes px-lsp 0.3.3, a bundled Node runtime and automatic LSP updates. Built and tested on Windows 10, with a live connection and mod indexing verified in Notepad++.
+**Status:** 0.1.1 adds syntax highlighting and includes px-lsp 0.3.3, a bundled Node runtime and automatic LSP updates. Built and tested on Windows 10, with a live connection and mod indexing verified in Notepad++.
 
 ## Requirements
 
@@ -52,6 +52,8 @@ Updates go into `%LOCALAPPDATA%\PxToolkit\servers`, so they need no administrato
 `update.log` in that cache folder records downloads and failures. To force a check, run `update-server.ps1 -Force` from the installed `PxToolkit` folder. A non-empty `serverCommand` selects your own server and disables the automatic update path. Plugin DLL updates still require a new plugin installation.
 
 ## What works
+
+Syntax highlighting starts automatically for recognized mod files, without waiting for the LSP. It colors comments, strings, numbers, assignment keys, operators, boolean literals and `@variables`, using a palette matched to the editor's light or dark background. File recognition follows the mod-folder rules below; ordinary `.txt` files are unaffected.
 
 Diagnostics, completion, hover, go to definition and formatting. What each of
 those covers per file type is the server's own table, under

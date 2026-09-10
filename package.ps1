@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$version = '0.1.0'
+$version = '0.1.1'
 $serverVersion = (Get-Content "$PSScriptRoot/server-version.txt" -Raw).Trim()
 $serverTag = 'v0.4.2'
 $serverHash = '8675ff339ed635b085cefae6a3fec4ee5ef41c45b54561d59c7a68232cb3da8e'

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (2026-09-10)
+
+- Add syntax highlighting for Paradox script, GUI and localization files inside a mod. Comments, strings, numbers, keys, operators, boolean literals and variables have distinct styles, with colors for light and dark backgrounds.
+- Highlighting works immediately, without waiting for the language server.
+
 ## 0.1.0 (2026-09-09)
 
 - Wait for Notepad++ initialization before starting the server for restored tabs.

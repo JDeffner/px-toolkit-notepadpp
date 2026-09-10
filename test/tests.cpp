@@ -7,6 +7,7 @@
 
 #include "../src/classify.h"
 #include "../src/framing.h"
+#include "../src/highlight.h"
 #include "../src/markdown.h"
 #include "../src/textpos.h"
 
@@ -153,7 +154,26 @@ void testMarkdown() {
 
 }  // namespace
 
+void testHighlight() {
+    using namespace px;
+    const std::string text = "# comment = yes\r\nfoo = { amount >= -12.5 flag = yes scope:bar = @value name = \"a \\\"#b\\\"\" }";
+    const auto styles = highlight(text, false);
+    check(styles.size() == text.size(), "syntax styles use byte offsets");
+    check(styles[2] == Comment && styles[text.find('\r')] == Plain, "comments stop at CRLF");
+    check(styles[text.find("foo")] == Key && styles[text.find("scope:bar") + 5] == Key, "assignment keys and scopes");
+    check(styles[text.find("-12.5")] == Number && styles[text.find("flag = yes") + 7] == Literal, "numbers and booleans");
+    check(styles[text.find("@value")] == Variable && styles[text.find('{')] == Operator, "variables and operators");
+    check(styles[text.find("#b")] == String && styles.back() == Operator, "escaped quotes keep hashes inside strings");
+    const std::string loc = "l_english:\n key:0 \"Gr\xC3\xBC\xC3\x9F\x65 # text\" # note\n";
+    const auto ls = highlight(loc, true);
+    check(ls[0] == Key && ls[loc.find(':')] == Operator && ls[loc.find('0')] == Number, "localization keys and version");
+    check(ls[loc.find("# text")] == String && ls[loc.find("# note")] == Comment, "UTF-8 localization and comments");
+    check(highlight("\"unfinished\nstring", false).back() == String, "unfinished multiline string");
+    check(highlight("", false).empty(), "empty document");
+}
+
 int main() {
+    testHighlight();
     testClassify();
     testPositions();
     testFraming();

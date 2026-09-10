@@ -20,6 +20,7 @@
 
 #include "../sdk/PluginInterface.h"
 #include "classify.h"
+#include "highlight.h"
 #include "lspclient.h"
 #include "markdown.h"
 #include "settings.h"
@@ -386,12 +387,50 @@ void ensureServer(const std::wstring& modPath) {
 
 // -------------------------------------------------------------- document sync
 
+void styleDocument() {
+    static bool styling = false;
+    if (styling) return;
+    const auto fc = px::classify(currentPath(), px::isModRootOnDisk);
+    if (fc.lang == px::Lang::None) return;
+    styling = true;
+    const auto styles = px::highlight(bufferText(), fc.lang == px::Lang::Loc);
+    sci(SCI_STARTSTYLING, 0);
+    if (!styles.empty()) sci(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<LPARAM>(styles.data()));
+    styling = false;
+}
+
+void setUpSyntax() {
+    const COLORREF background = static_cast<COLORREF>(sci(SCI_STYLEGETBACK, STYLE_DEFAULT));
+    const bool dark = GetRValue(background) + GetGValue(background) + GetBValue(background) < 384;
+    const COLORREF lightColors[] = {
+        RGB(82, 113, 63), RGB(153, 66, 21), RGB(132, 62, 151), RGB(86, 86, 86),
+        RGB(0, 87, 160), RGB(139, 40, 118), RGB(145, 93, 0)
+    };
+    const COLORREF darkColors[] = {
+        RGB(144, 169, 116), RGB(222, 162, 117), RGB(194, 159, 224), RGB(198, 198, 198),
+        RGB(126, 190, 232), RGB(215, 153, 205), RGB(225, 190, 111)
+    };
+    char font[256] = {};
+    sci(SCI_STYLEGETFONT, STYLE_DEFAULT, reinterpret_cast<LPARAM>(font));
+    for (int style = px::Comment; style <= px::Variable; ++style) {
+        sci(SCI_STYLESETFONT, style, reinterpret_cast<LPARAM>(font));
+        sci(SCI_STYLESETSIZEFRACTIONAL, style, sci(SCI_STYLEGETSIZEFRACTIONAL, STYLE_DEFAULT));
+        sci(SCI_STYLESETBACK, style, background);
+        sci(SCI_STYLESETFORE, style, (dark ? darkColors : lightColors)[style - px::Comment]);
+        sci(SCI_STYLESETBOLD, style, style == px::Key);
+        sci(SCI_STYLESETITALIC, style, style == px::Comment);
+    }
+    sci(SCI_SETILEXER, 0, 0); // Container styling, independent of the LSP process.
+    styleDocument();
+}
+
 void openDocument(const std::wstring& path) {
     // bufferText() reads the current view, so a buffer that is not on screen
     // waits for its NPPN_BUFFERACTIVATED.
     if (path.empty() || lower(path) != lower(currentPath())) return;
     const px::FileClass fc = px::classify(path, px::isModRootOnDisk);
     if (fc.lang == px::Lang::None) return;
+    setUpSyntax();
     ensureServer(fc.modRoot);
     if (!g_client.running()) return;
     if (docFor(path) != nullptr) return;
@@ -937,6 +976,15 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
     // response window must exist before a buffer can start the language server.
     if (!g_ready && notify->nmhdr.code != NPPN_READY) return;
     switch (notify->nmhdr.code) {
+        case SCN_STYLENEEDED:
+            if (notify->nmhdr.hwndFrom == currentScintilla()) styleDocument();
+            break;
+
+        case NPPN_WORDSTYLESUPDATED:
+        case NPPN_DARKMODECHANGED:
+            openDocument(currentPath());
+            break;
+
         case NPPN_READY:
             onReady();
             break;

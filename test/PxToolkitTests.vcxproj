@@ -45,6 +45,7 @@
     <ClCompile Include="tests.cpp" />
     <ClCompile Include="..\src\classify.cpp" />
     <ClCompile Include="..\src\framing.cpp" />
+    <ClCompile Include="..\src\highlight.cpp" />
     <ClCompile Include="..\src\markdown.cpp" />
     <ClCompile Include="..\src\textpos.cpp" />
   </ItemGroup>

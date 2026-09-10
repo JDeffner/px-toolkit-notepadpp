@@ -54,6 +54,7 @@
   <ItemGroup>
     <ClCompile Include="classify.cpp" />
     <ClCompile Include="framing.cpp" />
+    <ClCompile Include="highlight.cpp" />
     <ClCompile Include="lspclient.cpp" />
     <ClCompile Include="markdown.cpp" />
     <ClCompile Include="plugin.cpp" />
@@ -63,6 +64,7 @@
   <ItemGroup>
     <ClInclude Include="classify.h" />
     <ClInclude Include="framing.h" />
+    <ClInclude Include="highlight.h" />
     <ClInclude Include="lspclient.h" />
     <ClInclude Include="markdown.h" />
     <ClInclude Include="settings.h" />
