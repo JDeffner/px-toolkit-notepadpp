@@ -14,6 +14,8 @@ Vendored verbatim from the Notepad++ repository at commit
 | `menuCmdID.h` | `PowerEditor/src/menuCmdID.h` |
 | `Scintilla.h` | `scintilla/include/Scintilla.h` |
 | `Sci_Position.h` | `scintilla/include/Sci_Position.h` |
+| `Docking.h` | `PowerEditor/src/WinControls/DockingWnd/Docking.h` |
+| `dockingResource.h` | `PowerEditor/src/WinControls/DockingWnd/dockingResource.h` |
 
 Notepad++ is Copyright (C) Don HO and contributors, licensed GPL-3.0-or-later.
 Source: <https://github.com/notepad-plus-plus/notepad-plus-plus>. The full

@@ -1,132 +1,98 @@
 # Paradox Modding Toolkit for Notepad++
 
-A Notepad++ plugin that runs the [px-lsp](https://www.npmjs.com/package/@px-lsp/server)
-language server and shows its answers in the editor: diagnostics, completion,
-hover, go to definition and document formatting for Crusader Kings III,
-Victoria 3 and Europa Universalis V mod files.
-
-Notepad++ has no LSP support of its own, so this repository is also a worked
-example of wiring a language server into an editor that gives you nothing but a
-DLL entry point. If you want a generic LSP client for Notepad++ instead of this
-Paradox-specific one, use [Ekopalypse's NppLspClient](https://github.com/Ekopalypse/NppLspClient).
-
-**Status:** 0.1.1 adds syntax highlighting and includes px-lsp 0.3.3, a bundled Node runtime and automatic LSP updates. Built and tested on Windows 10, with a live connection and mod indexing verified in Notepad++.
-
-## Requirements
-
-Notepad++ 8.x, 64-bit. Nothing else: the release zip carries the language
-server and the Node runtime it needs (an unmodified official nodejs.org
-win-x64 build), so no Node and no npm install is required.
+Language tools for Crusader Kings III, Victoria 3 and Europa Universalis V mods, powered by [px-lsp](https://github.com/JDeffner/paradox-modding-toolkit). Version 0.2.0 adds docked panels, references, rename previews, quick fixes, folding, signature help, semantic highlighting and native options. The release includes LSP 0.3.4 and Node.
 
 ## Install
 
-1. Take `PxToolkit-<version>-win-x64.zip` from [Releases](https://github.com/JDeffner/px-toolkit-notepadpp/releases), or build one
-   with `package.cmd` (see below).
-2. Extract it whole into the `plugins\` folder inside your Notepad++ folder. It
-   contains one `PxToolkit\` folder holding the DLL and the server beside it.
-3. Restart Notepad++.
+Use 64-bit Notepad++ on Windows 10 or later. This release was tested with Notepad++ 8.9.8; older versions are not covered by the native test run.
 
-The DLL alone will not work: without its `px-lsp\` neighbour the plugin finds no
-server and says so.
+1. Download the zip from [Releases](https://github.com/JDeffner/px-toolkit-notepadpp/releases).
+2. Save your files and close Notepad++.
+3. Extract the whole `PxToolkit` folder into its `plugins` folder, then reopen the editor.
 
-## Settings
+Keep the server folder beside the DLL. A separate Node installation is not needed. Existing settings are retained.
 
-`px-toolkit.ini` is created in the plugin config directory on first run
-(`Plugins > Paradox Modding Toolkit > Open settings` opens it). Edit it, then
-pick `Restart server`, which is what applies changes.
+## Editor tools
 
-| Key | Meaning |
+Open **Plugins > Paradox Modding Toolkit > Problems and outline** to show the docked panel. Drag its title to move it. Double-click a result, or select it and press Enter, to open its location.
+
+| Tool | How to use it |
 |---|---|
-| `serverCommand` | Command that starts the server. Empty uses the bundled `px-lsp\px-lsp.cmd` next to the DLL, and falls back to `px-lsp` on PATH. |
-| `gameId` | `ck3`, `vic3` or `eu5`. One server instance serves one game. |
-| `gamePath` | The game's `game/` folder, the source of vanilla definitions. |
-| `logsPath` | Folder holding the `script_docs` dumps the game writes. |
-| `locLanguage` | Localization language for previews and coverage, default `english`. |
+| Problems | Shows diagnostics reported by the server. Filter by severity or current file. This is not a scan of every unopened file. |
+| Outline | Lists symbols in the active file, including nested symbols. |
+| References | Place the caret on a symbol and use **Find references** (Shift+F12). Results include declarations. |
+| Workspace symbols | Enter part of a name in the Symbols tab and choose **Find symbols**, or press Enter in the search field. |
+| Rename | Place the caret on a symbol, press F2, enter its new name and choose **Preview rename**. Check the before/after rows, then choose **Apply preview**. |
+| Quick fixes | Place the caret on a diagnostic and choose **Quick fixes**. Open a fix to preview it, then apply it. The server currently offers localization creation for missing required keys. |
+| Folding | Use the editor's fold margin. Fold ranges come from the server; refreshes preserve collapsed blocks. |
+| Signature help | Appears at supported trigger characters, or with Ctrl+Shift+Space. Parameterized scripted effects and triggers show their arguments; the current argument is emphasized. |
+| Semantic highlighting | Adds server token colors to lexical colors. Lexical highlighting works while the server starts or is unavailable. |
 
-## Automatic LSP updates
+Rename and quick fixes preflight their targets before writing. Existing files change in editor buffers and remain unsaved. Each file has its own undo step. A localization fix can create a new file on disk. Changes to a previewed document invalidate the preview. Read-only targets and edits outside the active mod are refused. File deletion and file renaming operations are not supported.
 
-The zip includes px-lsp 0.3.3. When the plugin first starts a server in a Notepad++ session, it checks the latest stable upstream release in the background, at most once every 24 hours. Editing can start immediately with the bundled or previously downloaded server.
+If an unversioned localization edit targets an already modified buffer, save that target and request the fix again.
 
-Updates go into `%LOCALAPPDATA%\PxToolkit\servers`, so they need no administrator access. The updater verifies GitHub's SHA-256 digest, checks the payload files and runs the server's version command before activating a download. It keeps existing versions and never replaces a running server. The new version starts when you next launch Notepad++ or select **Restart server**. Network errors and failed validation leave the current server available.
+Completion (Ctrl+Space), hover, go to definition (F12), formatting, scope at caret and plain-text snippet insertion remain available. Change conflicting shortcuts in Notepad++'s Shortcut Mapper. The plugin does not implement snippet tabstops.
 
-`update.log` in that cache folder records downloads and failures. To force a check, run `update-server.ps1 -Force` from the installed `PxToolkit` folder. A non-empty `serverCommand` selects your own server and disables the automatic update path. Plugin DLL updates still require a new plugin installation.
+Files must belong to a mod: an ancestor must contain `descriptor.mod` or a `.metadata` folder. Recognized files are `.gui`, localization `.yml`, and `.txt` under script folders such as `common` and `events`. Use UTF-8 for non-ASCII text. Ordinary text files outside mods are unaffected. One server session serves the active mod; changing to another mod restarts it.
 
-## What works
+Coverage depends on the game, file type and available server data. See the server's [feature table](https://github.com/JDeffner/paradox-modding-toolkit/blob/main/packages/server/README.md#what-works-where). An empty result can mean that the server has no result for that location.
 
-Syntax highlighting starts automatically for recognized mod files, without waiting for the LSP. It colors comments, strings, numbers, assignment keys, operators, boolean literals and `@variables`, using a palette matched to the editor's light or dark background. File recognition follows the mod-folder rules below; ordinary `.txt` files are unaffected.
+## Options
 
-Diagnostics, completion, hover, go to definition and formatting. What each of
-those covers per file type is the server's own table, under
-["What works where"](https://github.com/JDeffner/paradox-modding-toolkit/blob/main/packages/server/README.md#what-works-where).
+Choose **Plugins > Paradox Modding Toolkit > Options**. **Save and apply** saves your choices and restarts the server.
 
-The plugin declares no snippet support, because Scintilla has no tabstops, so
-every insert arrives as plain text.
-
-A buffer is only sent to the server when it sits inside a mod: the nearest
-ancestor folder holding `descriptor.mod` (CK3) or a `.metadata` folder
-(Victoria 3, EU5). Inside one, `.gui` files, `.yml` files under a `localization`
-folder and `.txt` files under a script folder are opened as `paradox-gui`,
-`paradox-loc` and `paradox` respectively.
-
-## Menu
-
-| Item | Does |
+| Option | Meaning |
 |---|---|
-| Complete (Ctrl+Space) | Asks for completion at the caret. Typing an identifier character asks too. |
-| Go to definition (F12) | Opens the target and places the caret. Several results open the first. |
-| Format document | Applies the server's edits in one undo step. |
-| Scope at caret | `paradox/scopeAt`, shown as a calltip. Several scopes read `a\|b`, none reads `unknown`. |
-| Insert snippet | `paradox/snippets` as a Scintilla user list; the chosen entry's plain form is inserted. |
-| Reload script_docs | `paradox/reloadDocs`, after dumping fresh logs from the game. |
-| Show server log | Opens the collected `window/logMessage` lines. Read this first when completion is empty. |
-| Open settings | Opens `px-toolkit.ini`. |
-| Restart server | Stops the server and starts it again with the current settings. |
+| Game | CK3, Victoria 3 or EU5. |
+| Game data folder | The game's `game` folder, used for vanilla definitions. |
+| Script docs folder | Your game-generated `script_docs` dumps. Empty uses bundled data. |
+| Localization language | Language for localization operations, default `english`. |
+| Custom server launcher | Path to an executable or `.cmd` launcher. Empty uses the managed server. |
+| Automatic completion / signature help | Control requests while typing. Manual commands remain available. |
+| Syntax / semantic highlighting | Control lexical colors and additional server colors. Semantic colors require syntax highlighting. |
+| Code folding | Enable or disable server fold ranges. |
+| Completion inserts / hover detail | Choose the server's completion mode and hover detail level. |
+| Automatically update the LSP | Enable or disable background server checks. |
 
-The status bar's document-type field carries `paradox/status`: the definition and
-token counts, or `PX: indexing...` while the index is being built.
+**Open settings** still opens `px-toolkit.ini` in Notepad++'s plugin config folder. Existing values are retained; new feature switches default to enabled.
 
-## How it is wired
+## Updates
 
-Each LSP step lives in one place.
+**The LSP updates automatically by default. The plugin DLL does not.**
 
-| Step | File |
-|---|---|
-| Spawning `px-lsp --stdio`, `NODE_OPTIONS`, `shutdown`/`exit`, JSON-RPC ids | [`src/lspclient.cpp`](src/lspclient.cpp) |
-| `Content-Length` frame reassembly across pipe reads | [`src/framing.cpp`](src/framing.cpp) |
-| Which files are Paradox files, and which mod they belong to | [`src/classify.cpp`](src/classify.cpp) |
-| Scintilla byte offsets to LSP UTF-16 positions and back | [`src/textpos.cpp`](src/textpos.cpp) |
-| `initialize`, document sync, diagnostics, completion, hover, definition, formatting, the `paradox/*` requests | [`src/plugin.cpp`](src/plugin.cpp) |
-| Hover markdown reduced for a calltip | [`src/markdown.cpp`](src/markdown.cpp) |
+At the first managed server start in each Notepad++ session, the plugin starts a background check, at most once per 24 hours. **Check LSP now** bypasses that interval. Downloads go into `%LOCALAPPDATA%\PxToolkit\servers` without administrator access.
 
-Two constraints shape the rest. Scintilla and Notepad++ messages may only be
-sent from the UI thread, so the pipe reader thread decodes frames and posts them
-to a message-only window that the plugin owns; every callback runs there.
-And the server's parse cache is keyed by URI plus version, so document changes
-are debounced by 150 ms and each one bumps the version.
+The updater verifies the release asset's SHA-256 digest, checks required files and runs the downloaded server's version command before making it available. A new server starts after **Restart server** or the next Notepad++ launch. A running server is never replaced. Offline checks and invalid downloads leave the existing server available. The cache's `update.log` records details.
 
-## Build
+A custom launcher bypasses managed updates. Disabling checks still permits use of a version already downloaded. **Plugin releases** opens this plugin's release page. Install a release and restart Notepad++ to update the DLL. Publishing a GitHub release does not put a plugin into Notepad++'s Plugins Admin catalog.
 
-Visual Studio 2022 Build Tools with the C++ workload. No CMake.
+## Build and test
 
-```
-build.cmd
+Install Visual Studio 2022 Build Tools with the Desktop development with C++ workload.
+
+```powershell
+.\build.cmd
+.\build\x64\Release\PxToolkitTests.exe
+.\package.cmd
+.\test\updater-tests.ps1
 ```
 
-That produces `build\x64\Release\PxToolkit.dll` and
-`build\x64\Release\PxToolkitTests.exe`. Run the exe: it covers the file
-classification, the offset conversion, the frame parser and the markdown
-reduction, which is all the logic that does not need a running editor.
+`package.cmd` builds the production DLL, runs unit tests and packages the pinned server after checksum verification. The result is `build/PxToolkit-0.2.0-win-x64.zip`.
 
+For live editor tests, put the official `npp.8.9.8.portable.x64.zip` archive in `build`, run `package.cmd`, then run:
+
+```powershell
+.\test\native-smoke.ps1
+.\test\native-smoke.ps1 -Dark
 ```
-package.cmd
-```
 
-builds, then downloads the pinned px-lsp win-x64 payload with `curl.exe`
-(cached in `build\`, so it is fetched once), unpacks it with `tar.exe` and
-writes `build\PxToolkit-<version>-win-x64.zip`. The plugin version, upstream release tag and checksum are in `package.ps1`; the bundled server version is in `server-version.txt`. The payload is never
-committed here.
+The runner builds a separate test DLL, launches an isolated portable Notepad++, exercises the real LSP and Scintilla controls, and writes assertions and screenshots under `build/native-smoke-*`. It exits with an error on failure and closes its test process. Add `-KeepOpen` to inspect fixture tabs. Never install the DLL from `build/smoke-dll`; releases use `build/x64/Release`.
 
-## License
+See [integration decisions and validation](docs/notepadpp-integration.md) for sources and test limits.
 
-GPL-3.0-or-later, copyright 2026 Joel Deffner. See `THIRD-PARTY-NOTICES.md` for
-the vendored Notepad++ headers and nlohmann/json.
+## Source layout
+
+`plugin.cpp` connects Notepad++ notifications to LSP requests and editor changes. `panel.cpp` and `plugin.rc` implement the native panel and options. `lspfeatures.cpp` validates workspace edits, fold ranges and semantic tokens. `lspclient.cpp` owns the server process and pipes. Its reader posts responses to the UI thread; editor calls run there. Document revisions change immediately on edits, while synchronization is debounced by 150 ms.
+
+GPL-3.0-or-later. Copyright 2026 Joel Deffner. See [third-party notices](THIRD-PARTY-NOTICES.md).

@@ -1,0 +1,81 @@
+#include <windows.h>
+#include <commctrl.h>
+#include "resource.h"
+
+1 VERSIONINFO
+FILEVERSION 0,2,0,0
+PRODUCTVERSION 0,2,0,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_DLL
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "Paradox Modding Toolkit for Notepad++"
+            VALUE "FileVersion", "0.2.0.0"
+            VALUE "ProductName", "Paradox Modding Toolkit"
+            VALUE "ProductVersion", "0.2.0"
+            VALUE "LegalCopyright", "Copyright 2026 Joel Deffner"
+            VALUE "OriginalFilename", "PxToolkit.dll"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+IDD_PANEL DIALOGEX 0, 0, 600, 220
+STYLE DS_SETFONT | DS_CONTROL | WS_CHILD | WS_CLIPCHILDREN
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Paradox Toolkit"
+FONT 9, "Segoe UI"
+BEGIN
+    CONTROL "", IDC_TABS, WC_TABCONTROL, WS_TABSTOP, 5, 4, 590, 18
+    EDITTEXT IDC_QUERY, 5, 26, 190, 15, ES_AUTOHSCROLL
+    PUSHBUTTON "Find symbols", IDC_SEARCH, 200, 26, 70, 15
+    PUSHBUTTON "Preview rename", IDC_RENAME, 275, 26, 78, 15
+    PUSHBUTTON "Apply preview", IDC_APPLY, 358, 26, 72, 15
+    PUSHBUTTON "Refresh", IDC_REFRESH, 435, 26, 55, 15
+    PUSHBUTTON "Options", IDC_OPTIONS, 495, 26, 55, 15
+    COMBOBOX IDC_SEVERITY, 5, 46, 120, 70, CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL
+    CONTROL "Current file only", IDC_CURRENT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 135, 46, 100, 14
+    LTEXT "", IDC_STATUS, 240, 46, 350, 14
+    CONTROL "", IDC_RESULTS, WC_LISTVIEW, LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_TABSTOP | WS_BORDER, 5, 65, 590, 100
+END
+
+IDD_OPTIONS DIALOGEX 0, 0, 410, 340
+STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_CONTROLPARENT
+CAPTION "Paradox Toolkit options"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Game", -1, 10, 12, 85, 12
+    COMBOBOX IDC_GAME, 105, 10, 100, 65, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT "Game data folder", -1, 10, 35, 90, 12
+    EDITTEXT IDC_GAMEPATH, 105, 32, 295, 15, ES_AUTOHSCROLL
+    LTEXT "Script docs folder", -1, 10, 57, 90, 12
+    EDITTEXT IDC_LOGSPATH, 105, 54, 295, 15, ES_AUTOHSCROLL
+    LTEXT "Localization language", -1, 10, 79, 92, 12
+    EDITTEXT IDC_LANGUAGE, 105, 76, 120, 15, ES_AUTOHSCROLL
+    LTEXT "Custom server launcher", -1, 10, 101, 95, 12
+    EDITTEXT IDC_COMMAND, 105, 98, 295, 15, ES_AUTOHSCROLL
+    LTEXT "Leave empty to use the bundled server and downloaded updates.", -1, 105, 116, 295, 12
+    CONTROL "Automatic completion", IDC_COMPLETION, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 140, 175, 14
+    CONTROL "Automatic signature help", IDC_SIGNATURE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 140, 185, 14
+    CONTROL "Syntax highlighting", IDC_SYNTAX, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 159, 175, 14
+    CONTROL "Semantic highlighting", IDC_SEMANTIC, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 159, 185, 14
+    CONTROL "Code folding", IDC_FOLDING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 178, 175, 14
+    CONTROL "Automatically update the LSP", IDC_AUTOUPDATE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 178, 185, 14
+    LTEXT "Completion inserts", -1, 10, 203, 92, 12
+    COMBOBOX IDC_MODE, 105, 200, 95, 65, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT "Hover detail", -1, 215, 203, 65, 12
+    COMBOBOX IDC_HOVER, 285, 200, 115, 65, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT "LSP: checked daily on server start; downloads apply on the next server restart. Plugin DLL: install a release and restart Notepad++.", -1, 10, 230, 390, 28
+    PUSHBUTTON "Check LSP now", IDC_CHECK, 10, 262, 100, 18
+    PUSHBUTTON "Plugin releases", IDC_RELEASES, 120, 262, 100, 18
+    LTEXT "", IDC_OPTIONSTATUS, 10, 285, 390, 24
+    DEFPUSHBUTTON "Save and apply", IDOK, 220, 312, 100, 18
+    PUSHBUTTON "Close", IDCANCEL, 330, 312, 70, 18
+END

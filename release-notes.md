@@ -1,9 +1,11 @@
-Paradox Modding Toolkit for Notepad++ 0.1.1
+Paradox Modding Toolkit for Notepad++ 0.2.0
 
-Adds the syntax highlighting missing from 0.1.0. Paradox script, GUI and localization files inside a mod now have colors for comments, strings, numbers, keys, operators, boolean literals and variables. Highlighting starts immediately and works without the language server, with colors for light and dark backgrounds.
+Adds docked Problems, Outline, References, Symbols and Changes tabs; cross-file rename with before/after previews; localization quick fixes; code folding; signature help; and semantic highlighting. Native Options lets users choose their game, data paths, feature switches and LSP update behavior.
 
-Extract the whole `PxToolkit` folder from the zip into your Notepad++ `plugins` folder while Notepad++ is closed. Then reopen Notepad++.
+Fixes Windows mod-path handling that prevented some mod-specific diagnostics and quick fixes. Document revisions guard delayed responses, and edit previews refuse changed or read-only targets. Existing-file edits remain unsaved and can be undone separately in each file.
 
-The zip includes px-lsp 0.3.3 and Node. Automatic LSP updates remain enabled. This highlighting fix is in the plugin DLL, so it requires installing this plugin release.
+Includes px-lsp 0.3.4 and Node. Automatic LSP updates are enabled by default and take effect on the next server restart. Plugin DLL updates require installing a plugin release and restarting Notepad++.
 
-Requires 64-bit Notepad++ 8.x on Windows 10 or later.
+Tested with Notepad++ 8.9.8 x64 on Windows 10, using the real LSP in light and dark modes. Unit tests and updater tests also pass.
+
+Close Notepad++, extract the whole `PxToolkit` folder from the zip into its `plugins` folder, then reopen it. Existing user settings are retained.

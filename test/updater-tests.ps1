@@ -22,16 +22,19 @@ function Assert($condition, $message) { if (!$condition) { throw $message } }
 try {
     & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion $version -Force
     Assert (!(Test-Path "$cache/current.txt")) 'Same version must not download.'
+    Assert ((Get-Content "$cache/status.txt" -Raw) -match 'up to date') 'Manual check needs a current-version status.'
     & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion '0.0.0' -Force
     if (!(Test-Path "$cache/current.txt")) { throw (Get-Content "$cache/update.log" -Raw) }
     Assert ((Get-Content "$cache/current.txt" -Raw).Trim() -eq $version) 'Update did not activate.'
     Assert (Test-Path "$cache/$version/dist/server.js") 'Payload missing.'
+    Assert ((Get-Content "$cache/status.txt" -Raw) -match 'Restart the server') 'Manual update must explain activation.'
     $before = $global:PxUpdaterTest_requests
     & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion '0.0.0'
     Assert ($global:PxUpdaterTest_requests -eq $before) 'Daily throttle failed.'
     $global:PxUpdaterTest_offline = $true
     & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion '0.0.0' -Force
     Assert ((Get-Content "$cache/current.txt" -Raw).Trim() -eq $version) 'Offline check lost current server.'
+    Assert ((Get-Content "$cache/status.txt" -Raw) -match 'Update failed') 'Manual check must report network failure.'
     $global:PxUpdaterTest_offline = $false
     $global:PxUpdaterTest_badHash = $true
     & "$repo/update-server.ps1" -CacheRoot "$cache/rejected" -BundledVersion '0.0.0' -Force

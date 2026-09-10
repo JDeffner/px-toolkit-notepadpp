@@ -4,6 +4,7 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <fstream>
 
 namespace px {
 namespace {
@@ -53,7 +54,50 @@ Settings loadSettings(const std::wstring& iniPath) {
     s.locLanguage = readValue(iniPath, L"locLanguage");
     if (s.gameId.empty()) s.gameId = L"ck3";
     if (s.locLanguage.empty()) s.locLanguage = L"english";
+    s.automaticCompletion = readValue(iniPath, L"automaticCompletion") != L"0";
+    s.signatureHelp = readValue(iniPath, L"signatureHelp") != L"0";
+    s.syntaxHighlighting = readValue(iniPath, L"syntaxHighlighting") != L"0";
+    s.semanticHighlighting = readValue(iniPath, L"semanticHighlighting") != L"0";
+    s.folding = readValue(iniPath, L"folding") != L"0";
+    s.autoUpdateServer = readValue(iniPath, L"autoUpdateServer") != L"0";
+    s.completionMode = readValue(iniPath, L"completionMode");
+    if (s.completionMode != L"examples" && s.completionMode != L"names") s.completionMode = L"minimal";
+    s.hoverDetail = readValue(iniPath, L"hoverDetail");
+    if (s.hoverDetail != L"compact" && s.hoverDetail != L"full") s.hoverDetail = L"standard";
     return s;
+}
+
+bool saveSettings(const std::wstring& iniPath, const Settings& s) {
+    // Win32 preserves Unicode values only when the INI has a UTF-16 BOM.
+    std::ifstream input(iniPath, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(input)), {});
+    input.close();
+    if (bytes.compare(0, 2, "\xff\xfe") != 0) {
+        const bool utf8 = bytes.compare(0, 3, "\xef\xbb\xbf") == 0;
+        const auto content = utf8 ? bytes.substr(3) : bytes;
+        const int count = MultiByteToWideChar(utf8 ? CP_UTF8 : CP_ACP, 0, content.data(), static_cast<int>(content.size()), nullptr, 0);
+        std::wstring wide(count, L'\0');
+        MultiByteToWideChar(utf8 ? CP_UTF8 : CP_ACP, 0, content.data(), static_cast<int>(content.size()), wide.data(), count);
+        const std::wstring temporary = iniPath + L".pending";
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        output.write("\xff\xfe", 2); output.write(reinterpret_cast<const char*>(wide.data()), wide.size() * sizeof(wchar_t)); output.close();
+        if (!output || !MoveFileExW(temporary.c_str(), iniPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) { DeleteFileW(temporary.c_str()); return false; }
+        WritePrivateProfileStringW(nullptr, nullptr, nullptr, iniPath.c_str());
+    }
+    bool ok = true;
+    auto write = [&](const wchar_t* key, const std::wstring& value) {
+        if (!::WritePrivateProfileStringW(kSection, key, value.c_str(), iniPath.c_str())) ok = false;
+    };
+    write(L"serverCommand", s.serverCommand); write(L"gameId", s.gameId);
+    write(L"gamePath", s.gamePath); write(L"logsPath", s.logsPath); write(L"locLanguage", s.locLanguage);
+    write(L"completionMode", s.completionMode); write(L"hoverDetail", s.hoverDetail);
+    write(L"automaticCompletion", s.automaticCompletion ? L"1" : L"0");
+    write(L"signatureHelp", s.signatureHelp ? L"1" : L"0");
+    write(L"syntaxHighlighting", s.syntaxHighlighting ? L"1" : L"0");
+    write(L"semanticHighlighting", s.semanticHighlighting ? L"1" : L"0");
+    write(L"folding", s.folding ? L"1" : L"0");
+    write(L"autoUpdateServer", s.autoUpdateServer ? L"1" : L"0");
+    return ok;
 }
 
 }  // namespace px

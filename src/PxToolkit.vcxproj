@@ -46,7 +46,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>user32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>user32.lib;comctl32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EnableCOMDATFolding Condition="'$(Configuration)'=='Release'">true</EnableCOMDATFolding>
       <OptimizeReferences Condition="'$(Configuration)'=='Release'">true</OptimizeReferences>
     </Link>
@@ -56,8 +56,11 @@
     <ClCompile Include="framing.cpp" />
     <ClCompile Include="highlight.cpp" />
     <ClCompile Include="lspclient.cpp" />
+    <ClCompile Include="lspfeatures.cpp" />
+    <ClCompile Include="panel.cpp" />
     <ClCompile Include="markdown.cpp" />
-    <ClCompile Include="plugin.cpp" />
+    <ClCompile Include="plugin.cpp" Condition="'$(SmokeTest)'!='true'" />
+    <ClCompile Include="../test/native-smoke.cpp" Condition="'$(SmokeTest)'=='true'" />
     <ClCompile Include="settings.cpp" />
     <ClCompile Include="textpos.cpp" />
   </ItemGroup>
@@ -69,6 +72,9 @@
     <ClInclude Include="markdown.h" />
     <ClInclude Include="settings.h" />
     <ClInclude Include="textpos.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="plugin.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

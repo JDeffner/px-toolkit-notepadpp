@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
-$version = '0.1.1'
+$version = '0.2.0'
 $serverVersion = (Get-Content "$PSScriptRoot/server-version.txt" -Raw).Trim()
-$serverTag = 'v0.4.2'
-$serverHash = '8675ff339ed635b085cefae6a3fec4ee5ef41c45b54561d59c7a68232cb3da8e'
+$serverTag = 'v0.4.3'
+$serverHash = '2f308b7de406df02aa3ed75112ce0e6ed09d616157f1c1f30e8b6443c5af422b'
 $buildRoot = Join-Path $PSScriptRoot 'build'
 & "$PSScriptRoot/build.cmd"
 if ($LASTEXITCODE) { throw 'Build failed.' }

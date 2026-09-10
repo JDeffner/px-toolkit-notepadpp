@@ -17,11 +17,16 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <share.h>
+#include <shellapi.h>
 
 #include "../sdk/PluginInterface.h"
 #include "classify.h"
 #include "highlight.h"
 #include "lspclient.h"
+#include "lspfeatures.h"
+#include "panel.h"
 #include "markdown.h"
 #include "settings.h"
 #include "textpos.h"
@@ -34,6 +39,7 @@ const wchar_t kPluginName[] = L"Paradox Modding Toolkit";
 const wchar_t kWindowClass[] = L"PxToolkitLspSink";
 const UINT WM_PX_LSP = WM_APP + 1;
 const UINT_PTR TIMER_SYNC = 1;
+const UINT_PTR TIMER_FEATURES = 2;
 const UINT SYNC_DEBOUNCE_MS = 150;
 
 // Scintilla indicator numbers. 8 upwards is the container range; Notepad++ uses
@@ -54,6 +60,13 @@ enum MenuIndex {
     CMD_SHOW_LOG,
     CMD_OPEN_SETTINGS,
     CMD_RESTART,
+    CMD_PANEL,
+    CMD_REFERENCES,
+    CMD_SYMBOLS,
+    CMD_ACTIONS,
+    CMD_RENAME,
+    CMD_SIGNATURE,
+    CMD_OPTIONS,
     CMD_COUNT
 };
 
@@ -62,6 +75,12 @@ struct DocState {
     px::Lang lang = px::Lang::None;
     int version = 1;
     bool dirty = false;
+    bool opened = false;
+    uptr_t buffer = 0;
+    LRESULT pointer = 0;
+    std::string text;
+    std::vector<px::SemanticSpan> semantic;
+    int semanticVersion = -1;
 };
 
 struct Diagnostic {
@@ -69,6 +88,7 @@ struct Diagnostic {
     px::Position end;
     int severity = 1;
     std::string message;
+    Json raw;
 };
 
 struct CompletionItem {
@@ -84,6 +104,9 @@ NppData g_npp;
 FuncItem g_funcs[CMD_COUNT];
 ShortcutKey g_keyComplete = {true, false, false, VK_SPACE};
 ShortcutKey g_keyDefinition = {false, false, false, VK_F12};
+ShortcutKey g_keyReferences = {false, false, true, VK_F12};
+ShortcutKey g_keyRename = {false, false, false, VK_F2};
+ShortcutKey g_keySignature = {true, false, true, VK_SPACE};
 
 HWND g_sink = nullptr;
 std::wstring g_configDir;
@@ -94,6 +117,15 @@ px::LspClient g_client;
 FILE* g_logFile = nullptr;
 bool g_serverMissingReported = false;
 bool g_ready = false;
+bool g_initialized = false;
+bool g_applying = false;
+int g_revision = 0;
+int g_generation = 0;
+unsigned g_featureRequest = 0, g_signatureRequest = 0, g_navigationRequest = 0;
+Json g_capabilities;
+std::vector<std::string> g_legend;
+std::wstring g_status = L"PX: open a mod file";
+bool g_signatureVisible = false;
 std::wstring g_startedForMod;
 
 std::map<std::wstring, DocState> g_docs;               // key: lowercased full path
@@ -130,6 +162,7 @@ std::wstring toWide(const std::string& s) {
 std::string pathToUri(const std::wstring& path) {
     std::wstring slashed = path;
     std::replace(slashed.begin(), slashed.end(), L'\\', L'/');
+    if (slashed.size() > 1 && slashed[1] == L':') slashed[0] = static_cast<wchar_t>(towlower(slashed[0]));
     const std::string utf8 = toUtf8(slashed);
     std::string uri = "file:///";
     for (unsigned char c : utf8) {
@@ -195,6 +228,9 @@ std::string bufferText() {
     if (p == nullptr || len <= 0) return std::string();
     return std::string(p, static_cast<size_t>(len));
 }
+bool validUtf8(const std::string& text) {
+    return text.empty() || MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0) > 0;
+}
 
 void statusBar(const std::wstring& text) {
     ::SendMessage(g_npp._nppHandle, NPPM_SETSTATUSBAR, STATUSBAR_DOC_TYPE,
@@ -203,7 +239,7 @@ void statusBar(const std::wstring& text) {
 
 void appendLog(const std::string& line) {
     if (g_logFile == nullptr) {
-        if (::_wfopen_s(&g_logFile, g_logPath.c_str(), L"ab") != 0) return;
+        g_logFile = ::_wfsopen(g_logPath.c_str(), L"ab", _SH_DENYNO);
     }
     if (g_logFile == nullptr) return;
     ::fwrite(line.data(), 1, line.size(), g_logFile);
@@ -215,6 +251,41 @@ DocState* docFor(const std::wstring& path) {
     const auto it = g_docs.find(lower(path));
     return it == g_docs.end() ? nullptr : &it->second;
 }
+
+struct RequestContext {
+    std::wstring path;
+    int version, generation;
+    uptr_t buffer;
+    bool valid(bool requireActive = true) const {
+        const auto* doc = docFor(path);
+        return g_initialized && generation == g_generation && doc && doc->version == version &&
+               doc->buffer == buffer && (!requireActive || currentBuffer() == buffer);
+    }
+};
+RequestContext context() {
+    auto* doc = docFor(currentPath());
+    return {currentPath(), doc ? doc->version : -1, g_generation, currentBuffer()};
+}
+bool supports(const char* name) {
+    if (!g_initialized || !g_capabilities.contains(name)) return false;
+    const auto& value = g_capabilities[name];
+    return !value.is_null() && value != false;
+}
+void refreshProblems();
+void requestDocumentFeatures();
+void requestReferences();
+void requestSymbols(const std::wstring& query);
+void requestCodeActions();
+void requestRename(const std::wstring& name);
+void requestSignature();
+void showOptions();
+void applyPreview();
+void navigate(const px::PanelRow& row);
+void previewWorkspaceEdit(const Json& edit);
+void sendOpen(DocState& doc);
+void openDocument(const std::wstring& path);
+void resetSession();
+void scheduleFeatures() { if (g_sink && !g_applying) ::SetTimer(g_sink, TIMER_FEATURES, 220, nullptr); }
 
 // ------------------------------------------------------------ server startup
 
@@ -258,7 +329,7 @@ std::wstring updatedServer(const std::wstring& dir) {
     const std::wstring cache = std::wstring(local) + L"\\PxToolkit\\servers";
     // The updater never inherits the LSP pipes and never delays editor startup.
     static bool checked = false;
-    if (!checked) {
+    if (!checked && g_settings.autoUpdateServer) {
         checked = true;
         wchar_t system[MAX_PATH] = {};
         ::GetSystemDirectoryW(system, MAX_PATH);
@@ -315,6 +386,8 @@ void applyDiagnostics(const std::string& uri);
 void handleNotification(const std::string& method, const Json& params);
 
 void startServer(const std::wstring& modPath) {
+    ++g_generation;
+    g_initialized = false;
     const std::wstring launcher = resolveServerCommand(g_settings.serverCommand);
     if (launcher.empty()) {
         if (!g_serverMissingReported) {
@@ -344,12 +417,16 @@ void startServer(const std::wstring& modPath) {
     const std::wstring storageDir = g_configDir + L"\\px-lsp-storage";
     ::CreateDirectoryW(storageDir.c_str(), nullptr);
 
+    std::wstring nativeMod = modPath;
+    std::replace(nativeMod.begin(), nativeMod.end(), L'/', L'\\');
     Json settings = {
         {"gameId", toUtf8(g_settings.gameId)},
         {"gamePath", g_settings.gamePath.empty() ? Json(nullptr) : Json(toUtf8(g_settings.gamePath))},
         {"logsPath", g_settings.logsPath.empty() ? Json(nullptr) : Json(toUtf8(g_settings.logsPath))},
-        {"modPath", modPath.empty() ? Json(nullptr) : Json(toUtf8(modPath))},
+        {"modPath", nativeMod.empty() ? Json(nullptr) : Json(toUtf8(nativeMod))},
         {"locLanguage", toUtf8(g_settings.locLanguage)},
+        {"completionMode", toUtf8(g_settings.completionMode)},
+        {"hoverDetail", toUtf8(g_settings.hoverDetail)},
     };
 
     Json init = {
@@ -364,6 +441,9 @@ void startServer(const std::wstring& modPath) {
             // plain-text inserts and never a literal "${".
             {"completion", {{"completionItem", {{"snippetSupport", false}}}}},
             {"hover", {{"contentFormat", Json::array({"markdown", "plaintext"})}}},
+            {"documentSymbol", {{"hierarchicalDocumentSymbolSupport", true}}},
+            {"foldingRange", {{"lineFoldingOnly", true}}},
+            {"semanticTokens", {{"requests", {{"full", true}}}, {"tokenTypes", Json::array({"method", "function", "variable", "property", "macro", "event", "enumMember", "string"})}, {"tokenModifiers", Json::array({"defaultLibrary"})}, {"formats", Json::array({"relative"})}}},
             {"publishDiagnostics", Json::object()}}}}},
         {"initializationOptions",
          {{"storageDir", toUtf8(storageDir)}, {"settings", settings}}},
@@ -375,13 +455,21 @@ void startServer(const std::wstring& modPath) {
             return;
         }
         const Json info = result.value("serverInfo", Json::object());
+        g_capabilities = result.value("capabilities", Json::object());
+        g_legend.clear();
+        const auto semantic = g_capabilities.value("semanticTokensProvider", Json());
+        if (semantic.is_object()) g_legend = semantic.value("legend", Json::object()).value("tokenTypes", std::vector<std::string>{});
         appendLog("px-lsp " + info.value("version", std::string("?")) + " initialized");
         g_client.notify("initialized", Json::object());
+        g_initialized = true;
+        for (auto& pair : g_docs) sendOpen(pair.second);
+        scheduleFeatures();
         statusBar(L"PX: connected");
     });
 }
 
 void ensureServer(const std::wstring& modPath) {
+    if (g_client.running() && lower(modPath) != lower(g_startedForMod)) resetSession();
     if (!g_client.running()) startServer(modPath);
 }
 
@@ -393,7 +481,11 @@ void styleDocument() {
     const auto fc = px::classify(currentPath(), px::isModRootOnDisk);
     if (fc.lang == px::Lang::None) return;
     styling = true;
-    const auto styles = px::highlight(bufferText(), fc.lang == px::Lang::Loc);
+    const std::string text = bufferText();
+    auto styles = g_settings.syntaxHighlighting ? px::highlight(text, fc.lang == px::Lang::Loc) : std::vector<unsigned char>(text.size(), 0);
+    const auto* doc = docFor(currentPath());
+    if (g_settings.syntaxHighlighting && g_settings.semanticHighlighting && doc && doc->semanticVersion == doc->version)
+        for (const auto& span : doc->semantic) if (span.end <= styles.size()) std::fill(styles.begin() + span.start, styles.begin() + span.end, span.style);
     sci(SCI_STARTSTYLING, 0);
     if (!styles.empty()) sci(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<LPARAM>(styles.data()));
     styling = false;
@@ -420,6 +512,14 @@ void setUpSyntax() {
         sci(SCI_STYLESETBOLD, style, style == px::Key);
         sci(SCI_STYLESETITALIC, style, style == px::Comment);
     }
+    const COLORREF semanticLight[] = {RGB(0,90,155), RGB(133,64,133), RGB(144,97,0), RGB(20,109,105), RGB(132,65,0), RGB(151,43,87), RGB(78,80,151), RGB(125,82,25)};
+    const COLORREF semanticDark[] = {RGB(113,190,225), RGB(198,155,220), RGB(226,195,125), RGB(112,198,184), RGB(230,176,114), RGB(228,150,168), RGB(178,177,230), RGB(216,186,145)};
+    for (int i = 0; i < 8; ++i) {
+        sci(SCI_STYLESETFONT, 80 + i, reinterpret_cast<LPARAM>(font));
+        sci(SCI_STYLESETSIZEFRACTIONAL, 80 + i, sci(SCI_STYLEGETSIZEFRACTIONAL, STYLE_DEFAULT));
+        sci(SCI_STYLESETBACK, 80 + i, background); sci(SCI_STYLESETFORE, 80 + i, (dark ? semanticDark : semanticLight)[i]);
+        sci(SCI_STYLESETBOLD, 80 + i, 0); sci(SCI_STYLESETITALIC, 80 + i, 0);
+    }
     sci(SCI_SETILEXER, 0, 0); // Container styling, independent of the LSP process.
     styleDocument();
 }
@@ -428,36 +528,61 @@ void openDocument(const std::wstring& path) {
     // bufferText() reads the current view, so a buffer that is not on screen
     // waits for its NPPN_BUFFERACTIVATED.
     if (path.empty() || lower(path) != lower(currentPath())) return;
+    for (auto it = g_docs.begin(); it != g_docs.end();) {
+        if (it->second.buffer == currentBuffer() && it->first != lower(path)) {
+            if (it->second.opened) g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", it->second.uri}}}});
+            g_diags.erase(it->second.uri); it = g_docs.erase(it);
+        } else ++it;
+    }
     const px::FileClass fc = px::classify(path, px::isModRootOnDisk);
-    if (fc.lang == px::Lang::None) return;
+    if (fc.lang == px::Lang::None) {
+        px::setPanelRows(px::PanelTab::Outline, {}, L"Open a recognized mod file to see its outline.");
+        return;
+    }
     setUpSyntax();
+    if (!validUtf8(bufferText())) { statusBar(L"PX: convert this file to UTF-8 to use language features"); return; }
     ensureServer(fc.modRoot);
     if (!g_client.running()) return;
-    if (docFor(path) != nullptr) return;
+    // Save As changes a buffer's URI. Close the old identity before opening it again.
+    for (auto it = g_docs.begin(); it != g_docs.end();) {
+        if (it->second.buffer == currentBuffer() && it->first != lower(path)) {
+            if (it->second.opened) g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", it->second.uri}}}});
+            g_diags.erase(it->second.uri); it = g_docs.erase(it);
+        } else ++it;
+    }
+    if (docFor(path) != nullptr) { scheduleFeatures(); refreshProblems(); return; }
 
     DocState state;
     state.uri = pathToUri(path);
     state.lang = fc.lang;
+    state.version = ++g_revision;
+    state.buffer = currentBuffer(); state.pointer = sci(SCI_GETDOCPOINTER); state.text = bufferText();
     g_docs[lower(path)] = state;
+    sendOpen(g_docs[lower(path)]);
+    scheduleFeatures();
+    refreshProblems();
+}
 
+void sendOpen(DocState& state) {
+    if (!g_initialized || state.opened) return;
     g_client.notify("textDocument/didOpen",
                     {{"textDocument",
                       {{"uri", state.uri},
-                       {"languageId", px::languageId(fc.lang)},
+                       {"languageId", px::languageId(state.lang)},
                        {"version", state.version},
-                       {"text", bufferText()}}}});
+                       {"text", state.text}}}});
+    state.opened = true; state.dirty = false;
 }
 
 void flushChange(const std::wstring& path) {
     DocState* doc = docFor(path);
-    if (doc == nullptr || !doc->dirty) return;
+    if (doc == nullptr || !doc->dirty || !g_initialized || !doc->opened) return;
     doc->dirty = false;
-    doc->version += 1;  // the parse cache is keyed by uri + version
     g_client.notify("textDocument/didChange",
                     {{"textDocument", {{"uri", doc->uri}, {"version", doc->version}}},
                      // A content change with no range is a full replacement, and
                      // it is what an editor buffer produces for free.
-                     {"contentChanges", Json::array({{{"text", bufferText()}}})}});
+                     {"contentChanges", Json::array({{{"text", doc->text}}})}});
 }
 
 void closeDocument(const std::wstring& path) {
@@ -466,6 +591,7 @@ void closeDocument(const std::wstring& path) {
     g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", doc->uri}}}});
     g_diags.erase(doc->uri);
     g_docs.erase(lower(path));
+    refreshProblems();
 }
 
 // ------------------------------------------------------------- diagnostics
@@ -529,6 +655,8 @@ void applyDiagnostics(const std::string& uri) {
 void handleNotification(const std::string& method, const Json& params) {
     if (method == "textDocument/publishDiagnostics") {
         const std::string uri = params.value("uri", std::string());
+        const auto* source = docFor(uriToPath(uri));
+        if (source && params.contains("version") && params["version"].is_number_integer() && params["version"].get<int>() != source->version) return;
         std::vector<Diagnostic> list;
         for (const Json& d : params.value("diagnostics", Json::array())) {
             if (!d.is_object() || !d.contains("range")) continue;
@@ -539,10 +667,12 @@ void handleNotification(const std::string& method, const Json& params) {
             entry.end.character = d["range"]["end"].value("character", 0);
             entry.severity = d.value("severity", 1);
             entry.message = d.value("message", std::string());
+            entry.raw = d;
             list.push_back(entry);
         }
         g_diags[uri] = list;
         applyDiagnostics(uri);
+        refreshProblems();
     } else if (method == "paradox/status") {
         wchar_t line[128];
         if (params.value("indexing", false)) {
@@ -551,7 +681,16 @@ void handleNotification(const std::string& method, const Json& params) {
             ::swprintf_s(line, L"PX: %lld defs, %lld tokens", params.value("definitions", 0LL),
                          params.value("tokens", 0LL));
         }
-        statusBar(line);
+        g_status = line;
+        statusBar(g_status);
+        if (!params.value("indexing", false)) scheduleFeatures();
+    } else if (method == "$/serverExited") {
+        g_initialized = false;
+        ++g_generation;
+        for (auto& pair : g_docs) { pair.second.opened = false; pair.second.semantic.clear(); }
+        styleDocument();
+        px::panelStatus(L"Language server stopped. Use Restart server to reconnect.");
+        statusBar(L"PX: server stopped");
     } else if (method == "window/logMessage") {
         appendLog(params.value("message", std::string()));
     }
@@ -582,6 +721,8 @@ std::string hoverToText(const Json& result) {
 }
 
 void requestHover(Sci_Position position) {
+    if (g_signatureVisible) return;
+    const auto request = context();
     DocState* doc = docFor(currentPath());
     if (doc == nullptr || !g_client.running()) return;
     const std::string text = bufferText();
@@ -603,8 +744,8 @@ void requestHover(Sci_Position position) {
     g_client.request("textDocument/hover",
                      {{"textDocument", {{"uri", doc->uri}}},
                       {"position", {{"line", pos.line}, {"character", pos.character}}}},
-                     [position, prefix](const Json& result, const Json& error) {
-                         if (!g_dwelling || !error.is_null()) return;
+                     [position, prefix, request](const Json& result, const Json& error) {
+                         if (!request.valid() || !g_dwelling || g_signatureVisible || !error.is_null()) return;
                          const std::string body = hoverToText(result);
                          if (prefix.empty() && body.empty()) return;
                          showCalltip(position, prefix + body);
@@ -612,6 +753,8 @@ void requestHover(Sci_Position position) {
 }
 
 void requestCompletion() {
+    if (!supports("completionProvider")) return;
+    const auto request = context();
     DocState* doc = docFor(currentPath());
     if (doc == nullptr || !g_client.running()) return;
     const std::string text = bufferText();
@@ -621,8 +764,8 @@ void requestCompletion() {
     g_client.request("textDocument/completion",
                      {{"textDocument", {{"uri", doc->uri}}},
                       {"position", {{"line", pos.line}, {"character", pos.character}}}},
-                     [](const Json& result, const Json& error) {
-                         if (!error.is_null()) return;
+                     [request](const Json& result, const Json& error) {
+                         if (!request.valid() || !error.is_null()) return;
                          const Json items = result.is_array() ? result
                                                               : (result.is_object() ? result.value("items", Json::array())
                                                                                     : Json::array());
@@ -693,6 +836,7 @@ void applyCompletion(const SCNotification* notify) {
 }
 
 void gotoDefinition() {
+    const auto request = context();
     DocState* doc = docFor(currentPath());
     if (doc == nullptr || !g_client.running()) return;
     const std::string text = bufferText();
@@ -702,8 +846,8 @@ void gotoDefinition() {
     g_client.request("textDocument/definition",
                      {{"textDocument", {{"uri", doc->uri}}},
                       {"position", {{"line", pos.line}, {"character", pos.character}}}},
-                     [](const Json& result, const Json& error) {
-                         if (!error.is_null() || result.is_null()) return;
+                     [request](const Json& result, const Json& error) {
+                         if (!request.valid() || !error.is_null() || result.is_null()) return;
                          Json first = result.is_array() ? (result.empty() ? Json() : result[0]) : result;
                          if (!first.is_object()) return;
                          const size_t count = result.is_array() ? result.size() : 1;
@@ -716,6 +860,7 @@ void gotoDefinition() {
 
                          const std::wstring path = uriToPath(uri);
                          ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(path.c_str()));
+                         if (lower(currentPath()) != lower(path)) return;
                          px::Position target;
                          target.line = range["start"].value("line", 0);
                          target.character = range["start"].value("character", 0);
@@ -731,43 +876,33 @@ void gotoDefinition() {
 }
 
 void formatDocument() {
+    if (!supports("documentFormattingProvider") || sci(SCI_GETREADONLY)) return;
+    const auto request = context();
     DocState* doc = docFor(currentPath());
     if (doc == nullptr || !g_client.running()) return;
     g_client.request("textDocument/formatting",
                      {{"textDocument", {{"uri", doc->uri}}},
                       {"options", {{"tabSize", 4}, {"insertSpaces", false}}}},
-                     [](const Json& result, const Json& error) {
-                         if (!error.is_null() || !result.is_array() || result.empty()) return;
+                     [request](const Json& result, const Json& error) {
+                         if (!request.valid() || !error.is_null() || !result.is_array() || result.empty()) return;
                          const std::string text = bufferText();
-                         struct Edit {
-                             size_t start;
-                             size_t end;
-                             std::string newText;
-                         };
-                         std::vector<Edit> edits;
-                         for (const Json& e : result) {
-                             px::Position s, t;
-                             s.line = e["range"]["start"].value("line", 0);
-                             s.character = e["range"]["start"].value("character", 0);
-                             t.line = e["range"]["end"].value("line", 0);
-                             t.character = e["range"]["end"].value("character", 0);
-                             edits.push_back({px::positionToOffset(text, s), px::positionToOffset(text, t),
-                                              e.value("newText", std::string())});
-                         }
-                         // End-first, so an earlier edit's offsets stay valid.
-                         std::sort(edits.begin(), edits.end(),
-                                   [](const Edit& a, const Edit& b) { return a.start > b.start; });
+                         std::vector<px::TextEdit> edits;
+                         try { edits = px::textEdits(text, result); }
+                         catch (const std::exception& e) { statusBar(toWide(e.what())); return; }
                          sci(SCI_BEGINUNDOACTION);
-                         for (const Edit& e : edits) {
+                         for (const auto& e : edits) {
                              sci(SCI_SETTARGETRANGE, static_cast<WPARAM>(e.start), static_cast<LPARAM>(e.end));
-                             sci(SCI_REPLACETARGET, static_cast<WPARAM>(e.newText.size()),
-                                 reinterpret_cast<LPARAM>(e.newText.c_str()));
+                             sci(SCI_REPLACETARGET, static_cast<WPARAM>(e.text.size()),
+                                 reinterpret_cast<LPARAM>(e.text.c_str()));
                          }
                          sci(SCI_ENDUNDOACTION);
                      });
 }
 
 void scopeAtCaret() {
+    flushChange(currentPath());
+    const auto request = context();
+    if (!request.valid()) return;
     DocState* doc = docFor(currentPath());
     if (doc == nullptr || !g_client.running()) return;
     const Sci_Position caret = static_cast<Sci_Position>(sci(SCI_GETCURRENTPOS));
@@ -775,8 +910,8 @@ void scopeAtCaret() {
 
     g_client.request("paradox/scopeAt",
                      {{"uri", doc->uri}, {"position", {{"line", pos.line}, {"character", pos.character}}}},
-                     [caret](const Json& result, const Json& error) {
-                         if (!error.is_null() || result.is_null()) return;
+                     [request, caret](const Json& result, const Json& error) {
+                         if (!request.valid() || !error.is_null() || result.is_null()) return;
                          // scopes is an array, never one name: several stay
                          // ambiguous and none is a first-class "unknown".
                          std::string scopes;
@@ -796,6 +931,9 @@ void scopeAtCaret() {
 }
 
 void insertSnippet() {
+    flushChange(currentPath());
+    const auto request = context();
+    if (!request.valid()) return;
     DocState* doc = docFor(currentPath());
     if (doc == nullptr || !g_client.running()) return;
     const px::Position pos =
@@ -803,8 +941,8 @@ void insertSnippet() {
 
     g_client.request("paradox/snippets",
                      {{"uri", doc->uri}, {"position", {{"line", pos.line}, {"character", pos.character}}}},
-                     [](const Json& result, const Json& error) {
-                         if (!error.is_null()) return;
+                     [request](const Json& result, const Json& error) {
+                         if (!request.valid() || !error.is_null()) return;
                          g_snippets.clear();
                          std::string list;
                          for (const Json& s : result.value("snippets", Json::array())) {
@@ -837,11 +975,352 @@ void applySnippet(const SCNotification* notify) {
     sci(SCI_ENDUNDOACTION);
 }
 
+// ---------------------------------------------------------- editor workbench
+
+std::wstring displayPath(const std::string& uri) {
+    const auto path = uriToPath(uri);
+    auto root = g_startedForMod;
+    std::replace(root.begin(), root.end(), L'/', L'\\');
+    if (!root.empty() && root.back() != L'\\') root += L'\\';
+    if (!root.empty() && lower(path).compare(0, root.size(), lower(root)) == 0)
+        return path.substr(root.size());
+    return path;
+}
+px::PanelRow locationRow(const Json& item, const std::wstring& label) {
+    px::PanelRow row;
+    row.label = label;
+    row.uri = item.value("uri", std::string());
+    const auto range = item.value("range", Json::object());
+    const auto start = range.value("start", Json::object());
+    row.position = {start.value("line", 0), start.value("character", 0)};
+    row.file = displayPath(row.uri);
+    return row;
+}
+void navigate(const px::PanelRow& row) {
+    if (row.uri.compare(0, 8, "file:///") != 0) return;
+    const auto path = uriToPath(row.uri);
+    ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(path.c_str()));
+    if (lower(currentPath()) != lower(path)) { px::panelStatus(L"The target file could not be opened."); return; }
+    sci(SCI_ENSUREVISIBLEENFORCEPOLICY, row.position.line);
+    sci(SCI_GOTOPOS, px::positionToOffset(bufferText(), row.position));
+    sci(SCI_SCROLLCARET); ::SetFocus(currentScintilla());
+}
+void refreshProblems() {
+    std::vector<px::PanelRow> rows;
+    const auto* active = docFor(currentPath());
+    for (const auto& pair : g_diags) {
+        if (px::currentFileOnly() && (!active || pair.first != active->uri)) continue;
+        for (const auto& d : pair.second) {
+            if (px::problemSeverity() > 0 && d.severity != px::problemSeverity()) continue;
+            const wchar_t* severity = d.severity == 1 ? L"Error" : d.severity == 2 ? L"Warning" : d.severity == 3 ? L"Info" : L"Hint";
+            px::PanelRow row;
+            row.label = severity; row.detail = toWide(d.message); row.uri = pair.first;
+            row.file = displayPath(pair.first); row.position = d.start; row.data = d.raw;
+            rows.push_back(std::move(row));
+        }
+    }
+    const auto count = rows.size();
+    px::setPanelRows(px::PanelTab::Problems, std::move(rows), std::to_wstring(count) + L" issues from files reported by the server");
+}
+void addSymbols(const Json& symbols, const std::string& uri, int depth, std::vector<px::PanelRow>& rows) {
+    if (!symbols.is_array()) return;
+    for (const auto& symbol : symbols) {
+        const auto loc = symbol.contains("location") ? symbol["location"] : Json{{"uri", uri}, {"range", symbol.value("selectionRange", symbol.value("range", Json::object()))}};
+        auto row = locationRow(loc, std::wstring(depth * 2, L' ') + toWide(symbol.value("name", std::string())));
+        row.detail = toWide(symbol.value("detail", std::string()));
+        rows.push_back(std::move(row));
+        if (symbol.contains("children")) addSymbols(symbol["children"], uri, depth + 1, rows);
+    }
+}
+void applyFolds(const Json& ranges) {
+    const int count = static_cast<int>(sci(SCI_GETLINECOUNT));
+    const auto levels = px::foldingLevels(count, ranges);
+    bool changed = false;
+    for (int line = 0; line < count; ++line) if (sci(SCI_GETFOLDLEVEL, line) != levels[line]) { changed = true; break; }
+    if (!changed) return;
+    std::vector<bool> collapsed(count);
+    for (int line = 0; line < count; ++line) collapsed[line] = (sci(SCI_GETFOLDLEVEL, line) & SC_FOLDLEVELHEADERFLAG) && !sci(SCI_GETFOLDEXPANDED, line);
+    for (int line = 0; line < count; ++line) {
+        const int previous = static_cast<int>(sci(SCI_GETFOLDLEVEL, line));
+        if ((previous & SC_FOLDLEVELHEADERFLAG) && !(levels[line] & SC_FOLDLEVELHEADERFLAG))
+            sci(SCI_FOLDLINE, line, SC_FOLDACTION_EXPAND);
+        sci(SCI_SETFOLDLEVEL, line, levels[line]);
+    }
+    // Reconcile visibility after edits without discarding the user's collapsed headers.
+    for (int line = count - 1; line >= 0; --line) if (levels[line] & SC_FOLDLEVELHEADERFLAG)
+        sci(SCI_FOLDLINE, line, collapsed[line] ? SC_FOLDACTION_CONTRACT : SC_FOLDACTION_EXPAND);
+}
+void requestDocumentFeatures() {
+    for (const auto& pair : g_docs) flushChange(pair.first);
+    const auto request = context();
+    if (!request.valid()) return;
+    const unsigned ticket = ++g_featureRequest;
+    const auto* doc = docFor(request.path);
+    const Json params{{"textDocument", {{"uri", doc->uri}}}};
+    if (supports("documentSymbolProvider")) {
+        const auto uri = doc->uri;
+        g_client.request("textDocument/documentSymbol", params, [request, ticket, uri](const Json& result, const Json& error) {
+            if (!request.valid() || ticket != g_featureRequest) return;
+            std::vector<px::PanelRow> rows;
+            if (error.is_null()) addSymbols(result, uri, 0, rows);
+            const auto count = rows.size();
+            px::setPanelRows(px::PanelTab::Outline, std::move(rows), error.is_null() ? std::to_wstring(count) + L" symbols in this file" : L"Outline request failed.");
+        });
+    }
+    if (g_settings.folding && supports("foldingRangeProvider")) {
+        sci(SCI_SETMARGINTYPEN, 2, SC_MARGIN_SYMBOL); sci(SCI_SETMARGINMASKN, 2, SC_MASK_FOLDERS);
+        sci(SCI_SETMARGINWIDTHN, 2, 16); sci(SCI_SETMARGINSENSITIVEN, 2, 1);
+        g_client.request("textDocument/foldingRange", params, [request, ticket](const Json& result, const Json& error) {
+            if (request.valid() && ticket == g_featureRequest && error.is_null() && result.is_array()) applyFolds(result);
+        });
+    } else { sci(SCI_FOLDALL, SC_FOLDACTION_EXPAND); applyFolds(Json::array()); }
+    if (g_settings.syntaxHighlighting && g_settings.semanticHighlighting && supports("semanticTokensProvider")) {
+        const auto text = doc->text;
+        g_client.request("textDocument/semanticTokens/full", params, [request, ticket, text](const Json& result, const Json& error) {
+            if (!request.valid() || ticket != g_featureRequest || !error.is_null() || !result.is_object()) return;
+            try {
+                auto* current = docFor(request.path);
+                current->semantic = px::semanticSpans(text, result.value("data", Json::array()), g_legend);
+                current->semanticVersion = current->version;
+                styleDocument();
+            } catch (const std::exception& e) { appendLog(e.what()); }
+        });
+    }
+}
+void requestReferences() {
+    px::showPanel(px::PanelTab::References);
+    for (const auto& pair : g_docs) flushChange(pair.first);
+    if (!supports("referencesProvider") || !docFor(currentPath())) { px::setPanelRows(px::PanelTab::References, {}, L"References are not available for the current document."); return; }
+    const auto request = context(); const auto ticket = ++g_navigationRequest;
+    const auto* doc = docFor(request.path);
+    const auto pos = px::offsetToPosition(doc->text, sci(SCI_GETCURRENTPOS));
+    px::setPanelRows(px::PanelTab::References, {}, L"Finding references...");
+    g_client.request("textDocument/references", {{"textDocument", {{"uri", doc->uri}}}, {"position", {{"line", pos.line}, {"character", pos.character}}}, {"context", {{"includeDeclaration", true}}}},
+        [request, ticket](const Json& result, const Json& error) {
+            if (!request.valid() || ticket != g_navigationRequest) return;
+            std::vector<px::PanelRow> rows;
+            if (error.is_null() && result.is_array()) for (const auto& loc : result) rows.push_back(locationRow(loc, L"Reference"));
+            const auto count = rows.size();
+            px::setPanelRows(px::PanelTab::References, std::move(rows), error.is_null() ? std::to_wstring(count) + L" references (including declarations)" : toWide(error.value("message", std::string("Reference search failed."))));
+        });
+}
+void requestSymbols(const std::wstring& query) {
+    px::showPanel(px::PanelTab::Symbols);
+    if (!supports("workspaceSymbolProvider")) { px::setPanelRows(px::PanelTab::Symbols, {}, L"Connect to a mod to search symbols."); return; }
+    for (const auto& pair : g_docs) flushChange(pair.first);
+    const int generation = g_generation; const auto ticket = ++g_navigationRequest;
+    px::setPanelRows(px::PanelTab::Symbols, {}, L"Searching symbols...");
+    g_client.request("workspace/symbol", {{"query", toUtf8(query)}}, [generation, ticket](const Json& result, const Json& error) {
+        if (generation != g_generation || ticket != g_navigationRequest) return;
+        std::vector<px::PanelRow> rows;
+        if (error.is_null()) addSymbols(result, "", 0, rows);
+        const auto count = rows.size();
+        px::setPanelRows(px::PanelTab::Symbols, std::move(rows), error.is_null() ? std::to_wstring(count) + L" results; refine the query if needed" : L"Symbol search failed.");
+    });
+}
+void requestSignature() {
+    flushChange(currentPath());
+    if (!supports("signatureHelpProvider") || !docFor(currentPath())) return;
+    const auto request = context(); const auto ticket = ++g_signatureRequest;
+    const auto* doc = docFor(request.path);
+    const auto caret = sci(SCI_GETCURRENTPOS);
+    const auto pos = px::offsetToPosition(doc->text, caret);
+    g_client.request("textDocument/signatureHelp", {{"textDocument", {{"uri", doc->uri}}}, {"position", {{"line", pos.line}, {"character", pos.character}}}},
+        [request, ticket, caret](const Json& result, const Json& error) {
+            if (!request.valid() || ticket != g_signatureRequest || caret != sci(SCI_GETCURRENTPOS) || !error.is_null()) return;
+            const auto signatures = result.is_object() ? result.value("signatures", Json::array()) : Json::array();
+            if (signatures.empty()) { if (g_signatureVisible) sci(SCI_CALLTIPCANCEL); g_signatureVisible = false; return; }
+            const int index = (std::min)(result.value("activeSignature", 0), static_cast<int>(signatures.size() - 1));
+            if (index < 0) return;
+            const auto& signature = signatures[index];
+            std::string body = signature.value("label", std::string());
+            const auto docs = signature.value("documentation", Json());
+            const std::string docText = docs.is_string() ? docs.get<std::string>() : docs.is_object() ? docs.value("value", std::string()) : "";
+            if (!docText.empty()) body += "\n" + px::markdownToPlain(docText);
+            g_signatureVisible = true;
+            showCalltip(caret, body);
+            const auto parameters = signature.value("parameters", Json::array());
+            const int active = signature.value("activeParameter", result.value("activeParameter", 0));
+            if (active >= 0 && static_cast<size_t>(active) < parameters.size()) {
+                const auto label = parameters[active].value("label", Json());
+                if (label.is_string()) {
+                    const auto part = label.get<std::string>(); const auto start = body.find(part);
+                    if (start != std::string::npos) sci(SCI_CALLTIPSETHLT, start, start + part.size());
+                }
+            }
+        });
+}
+
+struct PreparedFile {
+    std::wstring path;
+    std::string uri, before;
+    std::vector<px::TextEdit> edits;
+    uptr_t buffer = 0;
+    bool create = false;
+};
+std::vector<PreparedFile> g_preview;
+int g_previewGeneration = -1;
+RequestContext g_editOrigin;
+std::map<std::wstring, int> g_editVersions;
+FILETIME g_editStarted{};
+void invalidatePreview() { g_preview.clear(); px::enableApply(false); }
+void beginEditRequest() {
+    invalidatePreview();
+    for (const auto& pair : g_docs) flushChange(pair.first);
+    g_editOrigin = context(); g_editVersions.clear();
+    GetSystemTimeAsFileTime(&g_editStarted);
+    for (const auto& pair : g_docs) g_editVersions[pair.first] = pair.second.version;
+}
+bool editRequestValid() {
+    if (!g_editOrigin.valid(false)) return false;
+    for (const auto& pair : g_editVersions) { const auto* doc = docFor(pair.first); if (!doc || doc->version != pair.second) return false; }
+    return true;
+}
+bool isEditableModPath(const std::wstring& path) {
+    namespace fs = std::filesystem;
+    const auto target = lower(fs::weakly_canonical(path).wstring());
+    const auto root = lower(fs::weakly_canonical(g_startedForMod).wstring()) + L"\\";
+    return target.compare(0, root.size(), root) == 0;
+}
+void previewWorkspaceEdit(const Json& edit) {
+    px::showPanel(px::PanelTab::Actions);
+    invalidatePreview();
+    if (!editRequestValid()) { px::panelStatus(L"Files changed during the request. Request a fresh preview."); return; }
+    const auto originalPath = currentPath();
+    g_applying = true;
+    try {
+        std::vector<PreparedFile> prepared;
+        std::vector<px::PanelRow> rows;
+        for (const auto& file : px::workspaceEdits(edit)) {
+            PreparedFile target;
+            target.uri = file.uri; target.path = uriToPath(file.uri); target.create = file.create;
+            if (!isEditableModPath(target.path)) throw std::runtime_error("Edits outside the current mod are not allowed.");
+            if (target.create) {
+                if (std::filesystem::exists(target.path)) throw std::runtime_error("A file to create already exists. Request a fresh fix.");
+            } else {
+                if (!docFor(target.path)) {
+                    WIN32_FILE_ATTRIBUTE_DATA attributes{};
+                    if (!GetFileAttributesExW(target.path.c_str(), GetFileExInfoStandard, &attributes) || CompareFileTime(&attributes.ftLastWriteTime, &g_editStarted) > 0)
+                        throw std::runtime_error("A closed file changed during the request. Request a fresh preview.");
+                }
+                ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(target.path.c_str()));
+                if (lower(currentPath()) != lower(target.path)) throw std::runtime_error("An edit target could not be opened.");
+                if (sci(SCI_GETREADONLY)) throw std::runtime_error("An edit target is read-only.");
+                if (edit.contains("documentChanges") && file.version < 0 && sci(SCI_GETMODIFY))
+                    throw std::runtime_error("Save the target file before applying an unversioned file edit, then request a fresh fix.");
+                target.before = bufferText(); target.buffer = currentBuffer();
+                const auto* doc = docFor(target.path);
+                if (file.version >= 0 && (!doc || doc->version != file.version)) throw std::runtime_error("An edit target has a different document version.");
+            }
+            target.edits = px::textEdits(target.before, file.edits);
+            for (const auto& e : target.edits) {
+                px::PanelRow row; row.uri = target.uri; row.file = displayPath(target.uri);
+                row.position = px::offsetToPosition(target.before, e.start);
+                row.label = target.create ? L"Create file" : L"Replace text";
+                row.detail = L"Before: " + toWide(target.before.substr(e.start, (std::min)(e.end - e.start, size_t(100)))) + L"  After: " + toWide(e.text.substr(0, 150));
+                std::replace(row.detail.begin(), row.detail.end(), L'\n', L' '); std::replace(row.detail.begin(), row.detail.end(), L'\r', L' ');
+                rows.push_back(std::move(row));
+            }
+            prepared.push_back(std::move(target));
+        }
+        g_preview = std::move(prepared); g_previewGeneration = g_generation;
+        const auto count = rows.size();
+        px::setPanelRows(px::PanelTab::Actions, std::move(rows), std::to_wstring(count) + L" edits. Apply changes existing buffers; new files are created on disk.");
+        px::enableApply(count > 0);
+    } catch (const std::exception& e) { invalidatePreview(); px::setPanelRows(px::PanelTab::Actions, {}, toWide(e.what())); }
+    if (!originalPath.empty()) ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(originalPath.c_str()));
+    g_applying = false; scheduleFeatures();
+}
+void applyPreview() {
+    if (g_preview.empty()) return;
+    const auto original = currentPath();
+    g_applying = true;
+    std::vector<std::wstring> created;
+    try {
+        if (g_previewGeneration != g_generation) throw std::runtime_error("The server restarted. Request a fresh preview.");
+        // Preflight all existing buffers before creating files or changing any text.
+        for (const auto& file : g_preview) {
+            if (!isEditableModPath(file.path)) throw std::runtime_error("The mod path changed.");
+            if (file.create) { if (std::filesystem::exists(file.path)) throw std::runtime_error("A new file now exists. Request a fresh preview."); continue; }
+            ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(file.path.c_str()));
+            if (lower(currentPath()) != lower(file.path) || currentBuffer() != file.buffer || sci(SCI_GETREADONLY) || bufferText() != file.before)
+                throw std::runtime_error("A target was changed, closed or made read-only. Nothing was applied.");
+        }
+        for (const auto& file : g_preview) if (file.create) {
+            std::filesystem::create_directories(std::filesystem::path(file.path).parent_path());
+            std::string contents = file.before;
+            for (const auto& e : file.edits) contents.replace(e.start, e.end - e.start, e.text);
+            HANDLE output = ::CreateFileW(file.path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (output == INVALID_HANDLE_VALUE) throw std::runtime_error("Could not create the new file. Existing buffers were not changed.");
+            DWORD written = 0;
+            const BOOL ok = ::WriteFile(output, contents.data(), static_cast<DWORD>(contents.size()), &written, nullptr);
+            ::CloseHandle(output); created.push_back(file.path);
+            if (!ok || written != contents.size()) throw std::runtime_error("Could not write the new file.");
+        }
+        for (const auto& file : g_preview) if (!file.create) {
+            ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(file.path.c_str()));
+            sci(SCI_BEGINUNDOACTION);
+            for (const auto& e : file.edits) { sci(SCI_SETTARGETRANGE, e.start, e.end); sci(SCI_REPLACETARGET, e.text.size(), reinterpret_cast<LPARAM>(e.text.c_str())); }
+            sci(SCI_ENDUNDOACTION); flushChange(file.path);
+        }
+        for (const auto& path : created) ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(path.c_str()));
+        created.clear(); invalidatePreview();
+        px::panelStatus(L"Applied. Save modified tabs when ready. Undo is available separately in each existing file.");
+    } catch (const std::exception& e) {
+        for (const auto& path : created) ::DeleteFileW(path.c_str());
+        invalidatePreview(); px::panelStatus(toWide(e.what()));
+    }
+    if (!original.empty()) ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(original.c_str()));
+    g_applying = false; scheduleFeatures();
+}
+void requestCodeActions() {
+    px::showPanel(px::PanelTab::Actions); beginEditRequest();
+    if (!supports("codeActionProvider") || !docFor(currentPath())) { px::setPanelRows(px::PanelTab::Actions, {}, L"Quick fixes are not available for this document."); return; }
+    const auto request = context(); const auto ticket = ++g_navigationRequest;
+    const auto* doc = docFor(request.path);
+    const auto start = px::offsetToPosition(doc->text, sci(SCI_GETSELECTIONSTART)), end = px::offsetToPosition(doc->text, sci(SCI_GETSELECTIONEND));
+    Json diagnostics = Json::array();
+    for (const auto& d : g_diags[doc->uri]) if (d.start.line <= end.line && d.end.line >= start.line) diagnostics.push_back(d.raw);
+    px::setPanelRows(px::PanelTab::Actions, {}, L"Requesting quick fixes...");
+    g_client.request("textDocument/codeAction", {{"textDocument", {{"uri", doc->uri}}}, {"range", {{"start", {{"line", start.line}, {"character", start.character}}}, {"end", {{"line", end.line}, {"character", end.character}}}}}, {"context", {{"diagnostics", diagnostics}}}},
+        [request, ticket](const Json& result, const Json& error) {
+            if (!request.valid() || ticket != g_navigationRequest) return;
+            std::vector<px::PanelRow> rows;
+            if (error.is_null() && result.is_array()) for (const auto& action : result) {
+                px::PanelRow row; row.label = toWide(action.value("title", std::string())); row.data = action;
+                row.detail = action.contains("edit") ? L"Open to preview changes" : L"This action requires an unsupported editor command";
+                rows.push_back(std::move(row));
+            }
+            const auto count = rows.size();
+            px::setPanelRows(px::PanelTab::Actions, std::move(rows), error.is_null() ? std::to_wstring(count) + L" fixes for the selection; open one to preview" : toWide(error.value("message", std::string("Quick fix request failed."))));
+        });
+}
+void requestRename(const std::wstring& name) {
+    px::showPanel(px::PanelTab::Actions);
+    if (name.empty()) { px::panelStatus(L"Enter the new name above, then choose Preview rename. The caret selects the original symbol."); return; }
+    beginEditRequest();
+    if (!supports("renameProvider") || !docFor(currentPath())) { px::panelStatus(L"Rename is not available for this document."); return; }
+    const auto request = context(); const auto ticket = ++g_navigationRequest;
+    const auto* doc = docFor(request.path); const auto pos = px::offsetToPosition(doc->text, sci(SCI_GETCURRENTPOS));
+    const Json params{{"textDocument", {{"uri", doc->uri}}}, {"position", {{"line", pos.line}, {"character", pos.character}}}};
+    px::setPanelRows(px::PanelTab::Actions, {}, L"Checking whether this symbol can be renamed...");
+    g_client.request("textDocument/prepareRename", params, [request, ticket, params, name](const Json& result, const Json& error) {
+        if (!request.valid() || ticket != g_navigationRequest) return;
+        if (!error.is_null() || result.is_null()) { px::panelStatus(error.is_null() ? L"This symbol cannot be renamed." : toWide(error.value("message", std::string("Rename refused.")))); return; }
+        Json rename = params; rename["newName"] = toUtf8(name);
+        g_client.request("textDocument/rename", rename, [request, ticket](const Json& result, const Json& error) {
+            if (!request.valid() || ticket != g_navigationRequest) return;
+            if (!error.is_null()) { px::panelStatus(toWide(error.value("message", std::string("Rename failed.")))); return; }
+            if (result.is_object()) previewWorkspaceEdit(result);
+        });
+    });
+}
+
 // ------------------------------------------------------------- menu commands
 
-void cmdComplete() { requestCompletion(); }
-void cmdDefinition() { gotoDefinition(); }
-void cmdFormat() { formatDocument(); }
+void cmdComplete() { flushChange(currentPath()); requestCompletion(); }
+void cmdDefinition() { flushChange(currentPath()); gotoDefinition(); }
+void cmdFormat() { flushChange(currentPath()); formatDocument(); }
 void cmdScopeAt() { scopeAtCaret(); }
 void cmdInsertSnippet() { insertSnippet(); }
 
@@ -866,12 +1345,54 @@ void cmdOpenSettings() {
 
 void cmdRestart() {
     g_settings = px::loadSettings(g_iniPath);
-    const std::wstring mod = g_startedForMod;
+    resetSession();
+    openDocument(currentPath());
+}
+
+void resetSession() {
+    invalidatePreview();
+    ++g_generation;
+    g_initialized = false;
     g_client.stop();
     g_docs.clear();
     g_diags.clear();
-    startServer(mod);
-    openDocument(currentPath());
+    g_startedForMod.clear();
+    g_signatureVisible = false;
+    sci(SCI_CALLTIPCANCEL);
+    refreshProblems();
+}
+
+HANDLE g_updateProcess = nullptr;
+void showOptions() {
+    px::showOptions(g_settings, [](const px::Settings& settings) {
+        if (!px::saveSettings(g_iniPath, settings)) { px::optionsStatus(L"Could not save settings. Check the config folder permissions."); return false; }
+        g_settings = settings;
+        resetSession(); openDocument(currentPath());
+        return true;
+    }, [](bool check) {
+        if (!check) { ShellExecuteW(g_npp._nppHandle, L"open", L"https://github.com/JDeffner/px-toolkit-notepadpp/releases", nullptr, nullptr, SW_SHOWNORMAL); return; }
+        if (!g_settings.serverCommand.empty()) { px::optionsStatus(L"A custom server is selected. Its updates are managed separately."); return; }
+        if (g_updateProcess) { px::optionsStatus(L"An update check is already running."); return; }
+        const auto dir = moduleDir();
+        wchar_t system[MAX_PATH]{}; GetSystemDirectoryW(system, MAX_PATH);
+        const std::wstring exe = std::wstring(system) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+        std::wstring command = L"\"" + exe + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + dir + L"\\update-server.ps1\" -Force";
+        STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
+        if (!CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, dir.c_str(), &startup, &process)) { px::optionsStatus(L"Could not start the update check."); return; }
+        CloseHandle(process.hThread); g_updateProcess = process.hProcess;
+        SetTimer(g_sink, 3, 500, nullptr);
+        px::optionsStatus(L"Checking for an LSP update...");
+    });
+}
+
+void refreshPanel(const std::wstring& query) {
+    switch (px::panelTab()) {
+    case px::PanelTab::Problems: refreshProblems(); break;
+    case px::PanelTab::Outline: requestDocumentFeatures(); break;
+    case px::PanelTab::References: requestReferences(); break;
+    case px::PanelTab::Symbols: requestSymbols(query); break;
+    case px::PanelTab::Actions: requestCodeActions(); break;
+    }
 }
 
 // --------------------------------------------------------------- window sink
@@ -883,7 +1404,19 @@ LRESULT CALLBACK sinkProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
     }
     if (msg == WM_TIMER && w == TIMER_SYNC) {
         ::KillTimer(hwnd, TIMER_SYNC);
-        flushChange(currentPath());
+        for (auto& entry : g_docs) flushChange(entry.first);
+        return 0;
+    }
+    if (msg == WM_TIMER && w == TIMER_FEATURES) {
+        KillTimer(hwnd, TIMER_FEATURES); requestDocumentFeatures();
+        return 0;
+    }
+    if (msg == WM_TIMER && w == 3 && g_updateProcess && WaitForSingleObject(g_updateProcess, 0) != WAIT_TIMEOUT) {
+        KillTimer(hwnd, 3); CloseHandle(g_updateProcess); g_updateProcess = nullptr;
+        wchar_t local[MAX_PATH]{}; GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
+        std::ifstream input(std::wstring(local) + L"\\PxToolkit\\servers\\status.txt");
+        std::string result; std::getline(input, result);
+        px::optionsStatus(result.empty() ? L"Check finished. See %LOCALAPPDATA%\\PxToolkit\\servers\\update.log for details." : toWide(result));
         return 0;
     }
     return ::DefWindowProc(hwnd, msg, w, l);
@@ -916,6 +1449,13 @@ void setUpMenu() {
         {L"Show server log", cmdShowLog, nullptr},
         {L"Open settings", cmdOpenSettings, nullptr},
         {L"Restart server", cmdRestart, nullptr},
+        {L"Problems and outline", [] { px::showPanel(px::PanelTab::Problems); refreshProblems(); requestDocumentFeatures(); }, nullptr},
+        {L"Find references", requestReferences, &g_keyReferences},
+        {L"Workspace symbols", [] { requestSymbols(L""); }, nullptr},
+        {L"Quick fixes", requestCodeActions, nullptr},
+        {L"Rename symbol", [] { requestRename(L""); }, &g_keyRename},
+        {L"Signature help", requestSignature, &g_keySignature},
+        {L"Options...", showOptions, nullptr},
     };
     for (int i = 0; i < CMD_COUNT; ++i) {
         ::wcscpy_s(g_funcs[i]._itemName, items[i].name);
@@ -934,6 +1474,20 @@ void onReady() {
     g_settings = px::loadSettings(g_iniPath);
 
     createSink(g_instance);
+    px::initPanel(g_instance, g_npp._nppHandle, CMD_PANEL, [](px::PanelAction action, const px::PanelRow* row, const std::wstring& query) {
+        switch (action) {
+        case px::PanelAction::Navigate:
+            if (row && row->data.contains("edit")) previewWorkspaceEdit(row->data["edit"]);
+            else if (row && row->data.contains("command")) px::panelStatus(L"This action requires an editor command that is not supported.");
+            else if (row) navigate(*row);
+            break;
+        case px::PanelAction::Refresh: refreshPanel(query); break;
+        case px::PanelAction::Search: requestSymbols(query); break;
+        case px::PanelAction::Rename: requestRename(query); break;
+        case px::PanelAction::Apply: applyPreview(); break;
+        case px::PanelAction::Options: showOptions(); break;
+        }
+    });
     setUpIndicators(g_npp._scintillaMainHandle);
     setUpIndicators(g_npp._scintillaSecondHandle);
     ::SendMessage(g_npp._scintillaMainHandle, SCI_SETMOUSEDWELLTIME, 500, 0);
@@ -982,6 +1536,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
 
         case NPPN_WORDSTYLESUPDATED:
         case NPPN_DARKMODECHANGED:
+            px::themeOptions();
             openDocument(currentPath());
             break;
 
@@ -990,6 +1545,9 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
             break;
 
         case NPPN_SHUTDOWN:
+            g_ready = false;
+            px::destroyPanels();
+            if (g_updateProcess) { CloseHandle(g_updateProcess); g_updateProcess = nullptr; }
             g_client.stop();
             if (g_logFile != nullptr) {
                 ::fclose(g_logFile);
@@ -1000,6 +1558,8 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
 
         case NPPN_FILEOPENED:
         case NPPN_BUFFERACTIVATED: {
+            g_signatureVisible = false; g_dwelling = false;
+            sci(SCI_CALLTIPCANCEL);
             const std::wstring path = pathOfBuffer(notify->nmhdr.idFrom);
             if (path.empty() || lower(path) != lower(currentPath())) break;
             openDocument(path);
@@ -1028,19 +1588,37 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
 
         case SCN_MODIFIED:
             if ((notify->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT)) != 0) {
-                DocState* doc = docFor(currentPath());
-                if (doc != nullptr && g_sink != nullptr) {
-                    doc->dirty = true;
-                    ::SetTimer(g_sink, TIMER_SYNC, SYNC_DEBOUNCE_MS, nullptr);
+                HWND editor = static_cast<HWND>(notify->nmhdr.hwndFrom);
+                const auto pointer = SendMessage(editor, SCI_GETDOCPOINTER, 0, 0);
+                for (auto& entry : g_docs) if (entry.second.pointer == pointer) {
+                    auto& doc = entry.second;
+                    const auto size = SendMessage(editor, SCI_GETLENGTH, 0, 0);
+                    const auto bytes = reinterpret_cast<const char*>(SendMessage(editor, SCI_GETCHARACTERPOINTER, 0, 0));
+                    const std::string updated = bytes ? std::string(bytes, static_cast<size_t>(size)) : std::string();
+                    if (updated == doc.text) break; // cloned views notify for the same document
+                    if (!validUtf8(updated)) {
+                        if (doc.opened) g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", doc.uri}}}});
+                        g_diags.erase(doc.uri);
+                        const auto path = entry.first; g_docs.erase(path);
+                        invalidatePreview(); statusBar(L"PX: convert this file to UTF-8 to use language features");
+                        break;
+                    }
+                    doc.text = updated; doc.version = ++g_revision; doc.dirty = true; doc.semanticVersion = -1;
+                    if (!g_applying) invalidatePreview();
+                    SetTimer(g_sink, TIMER_SYNC, SYNC_DEBOUNCE_MS, nullptr);
+                    scheduleFeatures();
+                    break;
                 }
             }
             break;
 
         case SCN_CHARADDED:
-            if (isIdentifierChar(notify->ch) && docFor(currentPath()) != nullptr) {
+            if (g_settings.automaticCompletion && isIdentifierChar(notify->ch) && docFor(currentPath()) != nullptr) {
                 flushChange(currentPath());
                 requestCompletion();
             }
+            if (g_settings.signatureHelp && (notify->ch == '{' || notify->ch == '(' || notify->ch == ',' || notify->ch == '=')) requestSignature();
+            if (notify->ch == ')' || notify->ch == '}' || notify->ch == '\n') { g_signatureVisible = false; sci(SCI_CALLTIPCANCEL); }
             break;
 
         case SCN_AUTOCSELECTION:
@@ -1052,6 +1630,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
             break;
 
         case SCN_DWELLSTART:
+            if (!sci(SCI_CALLTIPACTIVE)) g_signatureVisible = false;
             if (docFor(currentPath()) != nullptr) {
                 g_dwelling = true;
                 requestHover(notify->position);
@@ -1060,7 +1639,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
 
         case SCN_DWELLEND:
             g_dwelling = false;
-            sci(SCI_CALLTIPCANCEL);
+            if (!g_signatureVisible) sci(SCI_CALLTIPCANCEL);
             break;
 
         default:

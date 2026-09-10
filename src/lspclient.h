@@ -9,6 +9,7 @@
 #include <windows.h>
 
 #include <deque>
+#include <atomic>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -33,7 +34,7 @@ public:
     // `notifyMessage` posted whenever decoded messages are waiting.
     bool start(const std::wstring& commandLine, HWND notifyWindow, UINT notifyMessage);
     void stop();
-    bool running() const { return process_ != nullptr; }
+    bool running() const { return process_ != nullptr && ::WaitForSingleObject(process_, 0) == WAIT_TIMEOUT; }
 
     void setNotificationHandler(NotificationHandler handler) { onNotification_ = std::move(handler); }
 
@@ -52,6 +53,8 @@ private:
     HANDLE stdinWrite_ = nullptr;
     HANDLE stdoutRead_ = nullptr;
     HANDLE reader_ = nullptr;
+    HANDLE job_ = nullptr;
+    std::atomic<bool> readerStopped_{false};
     HWND notifyWindow_ = nullptr;
     UINT notifyMessage_ = 0;
 

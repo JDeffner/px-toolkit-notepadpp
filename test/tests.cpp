@@ -4,12 +4,16 @@
 #include <cstdio>
 #include <set>
 #include <string>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 
 #include "../src/classify.h"
 #include "../src/framing.h"
 #include "../src/highlight.h"
 #include "../src/markdown.h"
 #include "../src/textpos.h"
+#include "../src/lspfeatures.h"
+#include "../src/settings.h"
 
 namespace {
 
@@ -172,7 +176,41 @@ void testHighlight() {
     check(highlight("", false).empty(), "empty document");
 }
 
+void testLspFeatures() {
+    using nlohmann::json;
+    auto edit = [](int a, int b, const char* text) { return json{{"range", {{"start", {{"line", 0}, {"character", a}}}, {"end", {{"line", 0}, {"character", b}}}}}, {"newText", text}}; };
+    auto rejects = [](auto fn) { try { fn(); return false; } catch (const std::exception&) { return true; } };
+    const std::string text = "a\xF0\x9F\x98\x80" "bc";
+    auto edits = px::textEdits(text, json::array({edit(1, 3, "face"), edit(4, 5, "C")}));
+    std::string result = text;
+    for (const auto& e : edits) result.replace(e.start, e.end - e.start, e.text);
+    check(result == "afacebC", "edits apply descending with astral UTF-16 positions");
+    check(rejects([&] { px::textEdits(text, json::array({edit(2, 3, "bad")})); }), "reject edit inside surrogate pair");
+    check(rejects([&] { px::textEdits(text, json::array({edit(0, 3, "a"), edit(1, 4, "b")})); }), "reject overlapping edits before mutation");
+    check(rejects([&] { px::textEdits(text, json::array({edit(4, 1, "bad")})); }), "reject reversed ranges");
+    check(rejects([&] { px::textEdits(text, json::array({edit(-1, 0, "bad")})); }), "reject negative ranges");
+    auto create = px::workspaceEdits({{"documentChanges", json::array({{{"kind", "create"}, {"uri", "file:///F:/mod/a.yml"}}, {{"textDocument", {{"uri", "file:///F:/mod/a.yml"}, {"version", nullptr}}}, {"edits", json::array({edit(0, 0, "l_english:\n")})}}})}});
+    check(create.size() == 1 && create[0].create && create[0].edits.size() == 1, "localization CreateFile merges with text edits");
+    check(rejects([&] { px::workspaceEdits({{"documentChanges", json::array({{{"kind", "delete"}, {"uri", "file:///F:/mod/a"}}})}}); }), "reject destructive resource operations");
+    check(rejects([&] { px::workspaceEdits({{"changes", {{"https://example.org", json::array()}}}}); }), "reject non-file edit targets");
+    const auto levels = px::foldingLevels(6, json::array({{{"startLine", 0}, {"endLine", 4}}, {{"startLine", 1}, {"endLine", 3}}, {{"startLine", -1}, {"endLine", 10}}}));
+    check(levels == std::vector<int>({0x2400, 0x2401, 0x402, 0x402, 0x401, 0x400}), "nested folds preserve closing lines and ignore invalid ranges");
+    const auto spans = px::semanticSpans(text, json::array({0,1,2,0,0,0,2,1,1,0}), {"function", "property"});
+    check(spans.size() == 2 && spans[0].start == 1 && spans[0].end == 5 && spans[1].start == 5 && spans[1].style == 83, "semantic token deltas use UTF-16 and server legend");
+    check(rejects([&] { px::semanticSpans(text, json::array({0,0,1}), {"function"}); }), "reject malformed semantic token stream");
+    wchar_t temp[MAX_PATH], path[MAX_PATH]; GetTempPathW(MAX_PATH, temp); GetTempFileNameW(temp, L"pxs", 0, path);
+    WritePrivateProfileStringW(L"px-toolkit", L"gameId", L"vic3", path);
+    auto settings = px::loadSettings(path);
+    check(settings.automaticCompletion && settings.semanticHighlighting && settings.autoUpdateServer, "old INI receives enabled feature defaults");
+    settings.autoUpdateServer = false; settings.folding = false; settings.gamePath = L"F:\\Games\\\u65e5\u672c"; settings.hoverDetail = L"full";
+    check(px::saveSettings(path, settings), "save settings succeeds");
+    const auto loaded = px::loadSettings(path);
+    check(!loaded.autoUpdateServer && !loaded.folding && loaded.gamePath == settings.gamePath && loaded.hoverDetail == L"full", "options persist across reload");
+    DeleteFileW(path);
+}
+
 int main() {
+    testLspFeatures();
     testHighlight();
     testClassify();
     testPositions();

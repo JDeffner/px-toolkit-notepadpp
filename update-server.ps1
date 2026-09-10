@@ -26,7 +26,7 @@ try {
         $cached = (Get-Content $pointer -Raw).Trim()
         if ($cached -match '^\d+\.\d+\.\d+$' -and (Test-Path "$CacheRoot\$cached\px-lsp.cmd") -and [version]$cached -gt $current) { $current = [version]$cached }
     }
-    if ([version]$version -le $current) { return }
+    if ([version]$version -le $current) { Set-Content "$CacheRoot\status.txt" "LSP $current is up to date." -Encoding UTF8; return }
     if ($asset.browser_download_url -notmatch '^https://github\.com/JDeffner/paradox-modding-toolkit/releases/download/[^/]+/px-lsp-win-x64-\d+\.\d+\.\d+\.zip$') { throw 'Unexpected asset URL.' }
     if ($asset.digest -notmatch '^sha256:[a-fA-F0-9]{64}$') { throw 'Missing SHA-256 digest.' }
     $stage = Join-Path $CacheRoot ([guid]::NewGuid().ToString())
@@ -49,8 +49,9 @@ try {
     if (Test-Path $pointer) { [IO.File]::Replace($pending, $pointer, $null) }
     else { [IO.File]::Move($pending, $pointer) }
     Add-Content "$CacheRoot\update.log" "$([DateTime]::UtcNow.ToString('o')) Ready: px-lsp $version. Applies on next server start."
+    Set-Content "$CacheRoot\status.txt" "LSP $version is ready. Restart the server to use it." -Encoding UTF8
 } catch {
-    if ($lock) { Add-Content "$CacheRoot\update.log" "$([DateTime]::UtcNow.ToString('o')) $($_.Exception.Message)" }
+    if ($lock) { Add-Content "$CacheRoot\update.log" "$([DateTime]::UtcNow.ToString('o')) $($_.Exception.Message)"; Set-Content "$CacheRoot\status.txt" "Update failed. The existing LSP is unchanged. $($_.Exception.Message)" -Encoding UTF8 }
 } finally {
     if ($stage -and (Test-Path $stage)) {
         $root = [IO.Path]::GetFullPath($CacheRoot).TrimEnd('\') + '\'

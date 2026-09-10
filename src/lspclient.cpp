@@ -64,7 +64,7 @@ bool LspClient::start(const std::wstring& commandLine, HWND notifyWindow, UINT n
 
     PROCESS_INFORMATION pi = {};
     const BOOL ok = ::CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, TRUE,
-                                     CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT, env.data(), nullptr,
+                                     CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED, env.data(), nullptr,
                                      &si, &pi);
 
     ::CloseHandle(inRead);
@@ -75,11 +75,17 @@ bool LspClient::start(const std::wstring& commandLine, HWND notifyWindow, UINT n
         ::CloseHandle(outRead);
         return false;
     }
+    job_ = CreateJobObjectW(nullptr, nullptr);
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (job_) { SetInformationJobObject(job_, JobObjectExtendedLimitInformation, &limits, sizeof(limits)); AssignProcessToJobObject(job_, pi.hProcess); }
+    ResumeThread(pi.hThread);
     ::CloseHandle(pi.hThread);
 
     process_ = pi.hProcess;
     stdinWrite_ = inWrite;
     stdoutRead_ = outRead;
+    readerStopped_ = false;
     reader_ = ::CreateThread(nullptr, 0, &LspClient::readerThread, this, 0, nullptr);
     return true;
 }
@@ -97,11 +103,13 @@ void LspClient::stop() {
     }
     ::WaitForSingleObject(process_, 3000);
     ::TerminateProcess(process_, 0);
+    if (job_) { CloseHandle(job_); job_ = nullptr; }
 
     // The child held the only other handle to the write end, so its death ends
     // the reader's blocking ReadFile. Join before closing what it reads from.
     if (reader_ != nullptr) {
-        ::WaitForSingleObject(reader_, 2000);
+        CancelSynchronousIo(reader_);
+        ::WaitForSingleObject(reader_, INFINITE);
         ::CloseHandle(reader_);
         reader_ = nullptr;
     }
@@ -160,6 +168,8 @@ void LspClient::readLoop() {
         }
         if (any && notifyWindow_ != nullptr) ::PostMessage(notifyWindow_, notifyMessage_, 0, 0);
     }
+    readerStopped_ = true;
+    if (notifyWindow_ != nullptr) ::PostMessage(notifyWindow_, notifyMessage_, 0, 0);
 }
 
 void LspClient::drain() {
@@ -185,13 +195,20 @@ void LspClient::drain() {
             if (message.contains("id")) {
                 // The server asks for progress tokens; an unanswered request
                 // stalls its side, so every one gets a null result.
-                send(Json{{"jsonrpc", "2.0"}, {"id", message["id"]}, {"result", nullptr}});
+                const auto method = message.value("method", std::string());
+                if (method == "window/workDoneProgress/create") send(Json{{"jsonrpc", "2.0"}, {"id", message["id"]}, {"result", nullptr}});
+                else if (method == "workspace/applyEdit") send(Json{{"jsonrpc", "2.0"}, {"id", message["id"]}, {"result", {{"applied", false}, {"failureReason", "Use the plugin's edit preview to apply changes."}}}});
+                else send(Json{{"jsonrpc", "2.0"}, {"id", message["id"]}, {"error", {{"code", -32601}, {"message", "Unsupported client request"}}}});
                 continue;
             }
             if (onNotification_) {
                 onNotification_(message["method"].get<std::string>(), message.value("params", Json::object()));
             }
         }
+    }
+    if (process_ && readerStopped_) {
+        stop();
+        if (onNotification_) onNotification_("$/serverExited", Json::object());
     }
 }
 

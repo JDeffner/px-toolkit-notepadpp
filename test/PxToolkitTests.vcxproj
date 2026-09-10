@@ -46,6 +46,8 @@
     <ClCompile Include="..\src\classify.cpp" />
     <ClCompile Include="..\src\framing.cpp" />
     <ClCompile Include="..\src\highlight.cpp" />
+    <ClCompile Include="..\src\lspfeatures.cpp" />
+    <ClCompile Include="..\src\settings.cpp" />
     <ClCompile Include="..\src\markdown.cpp" />
     <ClCompile Include="..\src\textpos.cpp" />
   </ItemGroup>
