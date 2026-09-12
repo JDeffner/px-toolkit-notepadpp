@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace px {
 
@@ -17,5 +18,18 @@ struct Position {
 
 Position offsetToPosition(const std::string& utf8, size_t offset);
 size_t positionToOffset(const std::string& utf8, Position pos);
+
+// Checked positions for a fixed text snapshot. Line lookup never scans earlier
+// lines; an ordered stream also reuses its last position within the line.
+class TextPositions {
+public:
+    explicit TextPositions(const std::string& text);
+    size_t offset(Position pos, bool append = false) const;
+private:
+    const std::string& text_;
+    std::vector<size_t> lines_;
+    mutable Position cursor_;
+    mutable size_t cursorOffset_ = 0;
+};
 
 }  // namespace px

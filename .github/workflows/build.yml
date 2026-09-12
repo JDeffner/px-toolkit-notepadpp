@@ -5,29 +5,82 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86
+            runner: windows-latest
+            npp: npp.8.9.8.portable.zip
+            npp-sha256: 880c5c5323305154aaed3fa5238d6186cda3bcfa3a82645243c1e7999e35602a
+          - architecture: x64
+            runner: windows-latest
+            npp: npp.8.9.8.portable.x64.zip
+            npp-sha256: b269383239464a945d17cfabfccf53935b83d80d907922310fdfd50d80274c66
+          - architecture: arm64
+            runner: windows-11-arm
+            npp: npp.8.9.8.portable.arm64.zip
+            npp-sha256: 06b047b6c07ee32f2b685af42a7312c62e7f6eeda747e6102cb48936fd91c4ee
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Build, test and package
-        run: .\package.cmd
+        run: .\package.cmd ${{ matrix.architecture }}
         shell: cmd
 
       - name: Test server updater
+        if: matrix.architecture == 'x64'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File test/updater-tests.ps1
+
+      - name: Get Notepad++ test host
+        shell: pwsh
+        run: |
+          $archive = 'build/${{ matrix.npp }}'
+          Invoke-WebRequest 'https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.8/${{ matrix.npp }}' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne '${{ matrix.npp-sha256 }}') { throw 'Notepad++ checksum mismatch.' }
+
+      - name: Test native editor integration (light)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File test/native-smoke.ps1 -Architecture ${{ matrix.architecture }}
+
+      - name: Test native editor integration (dark)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File test/native-smoke.ps1 -Architecture ${{ matrix.architecture }} -Dark
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-checks-${{ matrix.architecture }}
+          path: |
+            build/native-smoke-*/results.txt
+            build/native-smoke-*/done.txt
+            build/native-smoke-*/*.png
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PxToolkit-x64
-          path: build/PxToolkit-*-win-x64.zip
+          name: PxToolkit-${{ matrix.architecture }}
+          path: build/PxToolkit-*-win-${{ matrix.architecture }}.zip
+          if-no-files-found: error
 
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: PxToolkit-*
+          path: release-assets
+          merge-multiple: true
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME build/PxToolkit-*-win-x64.zip --verify-tag --title "Paradox Modding Toolkit $env:GITHUB_REF_NAME" --notes-file release-notes.md
-
-permissions:
-  contents: write
+        run: gh release create "$GITHUB_REF_NAME" release-assets/*.zip --verify-tag --title "Paradox Modding Toolkit $GITHUB_REF_NAME" --notes-file release-notes.md

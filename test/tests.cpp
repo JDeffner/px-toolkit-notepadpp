@@ -1,5 +1,5 @@
-// Tests for the pure logic only: the parts that decide what goes on the wire.
-// Anything needing Notepad++ or a running server is tried in the editor.
+// Tests for pure helpers and the transport, using this executable as fixture servers.
+// Real Notepad++ behavior is covered by native-smoke.cpp.
 
 #include <cstdio>
 #include <set>
@@ -127,6 +127,23 @@ void testFraming() {
     for (char c : stream) slow.feed(&c, 1);
     check(slow.next(body) && body == first, "byte-at-a-time first frame");
     check(slow.next(body) && body == second, "byte-at-a-time second frame");
+    for (const char* length : {"-1", "+1", "", "1x", "1.5", "18446744073709551615", "33554433"}) {
+        FrameParser invalid;
+        const std::string bytes = std::string("Content-Length: ") + length + "\r\n\r\nx";
+        bool rejected = false;
+        try { invalid.feed(bytes.data(), bytes.size()); invalid.next(body); } catch (const std::exception&) { rejected = true; }
+        check(rejected, "invalid frame length is rejected");
+    }
+    for (const std::string bytes : {std::string("Content-Type: x\r\n\r\n"), std::string("Content-Length: 1\r\nContent-Length: 1\r\n\r\nx"), std::string(FrameParser::maxHeaderBytes + 1, 'x')}) {
+        FrameParser invalid;
+        bool rejected = false;
+        try { invalid.feed(bytes.data(), bytes.size()); invalid.next(body); } catch (const std::exception&) { rejected = true; }
+        check(rejected, "missing, duplicate or oversized header rejected");
+    }
+    FrameParser varied;
+    const std::string bytes = "content-LENGTH: \t1 \r\n\r\nxContent-Length: 0\r\n\r\n";
+    varied.feed(bytes.data(), bytes.size());
+    check(varied.next(body) && body == "x" && varied.next(body) && body.empty(), "case-insensitive headers, whitespace and empty frames");
 }
 
 void testMarkdown() {
@@ -195,9 +212,57 @@ void testLspFeatures() {
     check(rejects([&] { px::workspaceEdits({{"changes", {{"https://example.org", json::array()}}}}); }), "reject non-file edit targets");
     const auto levels = px::foldingLevels(6, json::array({{{"startLine", 0}, {"endLine", 4}}, {{"startLine", 1}, {"endLine", 3}}, {{"startLine", -1}, {"endLine", 10}}}));
     check(levels == std::vector<int>({0x2400, 0x2401, 0x402, 0x402, 0x401, 0x400}), "nested folds preserve closing lines and ignore invalid ranges");
+    const std::string originalTokens = "alpha = beta\nlast";
+    const std::vector<px::SemanticSpan> originalSpans{{0,5,80}, {8,12,81}, {13,17,82}};
+    auto retained = originalSpans;
+    px::rebaseSemanticSpans(retained, originalTokens, " \n" + originalTokens);
+    check(retained.size() == 3 && retained[0].start == 2 && retained[1].start == 10 && retained[2].end == 19, "whitespace insertion shifts semantic colors without dropping unchanged tokens");
+    px::rebaseSemanticSpans(retained, " \n" + originalTokens, originalTokens);
+    check(retained.size() == 3 && retained[0].start == 0 && retained[2].end == 17, "undo shifts cached semantic colors back");
+    retained = originalSpans;
+    px::rebaseSemanticSpans(retained, originalTokens, "alpha = better\nlast");
+    check(retained.size() == 2 && retained[0].style == 80 && retained[1].style == 82 && retained[1].start == 15, "changing a token drops only its semantic color and shifts later tokens");
+    retained = originalSpans;
+    px::rebaseSemanticSpans(retained, originalTokens, "alpha = betas\nlast");
+    check(retained.size() == 2 && retained[1].start == 14, "extending a token invalidates its cached classification");
+    retained = originalSpans;
+    px::rebaseSemanticSpans(retained, originalTokens, "alpha = xbeta\nlast");
+    check(retained.size() == 2 && retained[1].start == 14, "prefixing a token invalidates its cached classification");
+    retained = originalSpans;
+    px::rebaseSemanticSpans(retained, originalTokens, "alphabeta\nlast");
+    check(retained.size() == 1 && retained[0].start == 10, "joining tokens discards both old classifications");
+    retained = originalSpans;
+    px::rebaseSemanticSpans(retained, originalTokens, "\xF0\x9F\x98\x80\n" + originalTokens);
+    check(retained.size() == 3 && retained[0].start == 5 && retained[2].end == 22, "semantic colors shift by UTF-8 bytes for inserted Unicode");
+    px::rebaseSemanticSpans(retained, "\xF0\x9F\x98\x80\n" + originalTokens, "");
+    check(retained.empty(), "whole document deletion removes cached colors");
     const auto spans = px::semanticSpans(text, json::array({0,1,2,0,0,0,2,1,1,0}), {"function", "property"});
     check(spans.size() == 2 && spans[0].start == 1 && spans[0].end == 5 && spans[1].start == 5 && spans[1].style == 83, "semantic token deltas use UTF-16 and server legend");
     check(rejects([&] { px::semanticSpans(text, json::array({0,0,1}), {"function"}); }), "reject malformed semantic token stream");
+    check(rejects([&] { px::semanticSpans(text, json::array({0,1,2147483647,0,0}), {"function"}); }), "reject semantic coordinate overflow");
+    check(rejects([&] { px::semanticSpans(text, json::array({0,2,1,0,0}), {"unknown"}); }), "validate positions of unknown token types");
+    check(rejects([&] { px::semanticSpans(text, json::array({0,0,1.5,0,0}), {"function"}); }), "reject fractional token length");
+    check(rejects([&] { auto e = edit(0,1,"x"); e["range"]["start"]["line"] = 4294967296ULL; px::textEdits(text, json::array({e})); }), "reject edit coordinate overflow");
+    const std::string multiline = "ab\r\nc\xF0\x9F\x98\x80" "d\nlast";
+    const auto multi = px::semanticSpans(multiline, json::array({1,1,2,0,0,0,2,1,0,0,1,0,4,0,0}), {"function"});
+    check(multi.size() == 3 && multi[0].start == 5 && multi[0].end == 9 && multi[2].start == 11 && multi[2].end == 15, "indexed positions preserve CRLF and astral token boundaries");
+    std::string large;
+    json tokens = json::array();
+    for (int i = 0; i < 20000; ++i) { large += "test_effect = { add_gold = 1 }\n"; for (int n : {i ? 1 : 0, 0, 11, 0, 0}) tokens.push_back(n); }
+    const auto started = GetTickCount64();
+    const auto largeSpans = px::semanticSpans(large, tokens, {"function"});
+    const auto elapsed = GetTickCount64() - started;
+    check(largeSpans.size() == 20000 && largeSpans.back().start == 19999 * 31, "large token response produces correct byte spans");
+    check(elapsed < 2000, "620 KB semantic response does not stall for seconds");
+    std::printf("20,000 semantic tokens: %llu ms\n", elapsed);
+    const std::string oneLine(100000, 'x');
+    json inlineTokens = json::array();
+    for (int i = 0; i < 20000; ++i) for (int n : {0, i ? 5 : 0, 5, 0, 0}) inlineTokens.push_back(n);
+    const auto inlineStart = GetTickCount64();
+    const auto inlineSpans = px::semanticSpans(oneLine, inlineTokens, {"function"});
+    check(inlineSpans.size() == 20000 && inlineSpans.back().end == oneLine.size() && GetTickCount64() - inlineStart < 2000, "long-line tokens advance without rescanning the line");
+    const px::TextPositions index(text);
+    check(index.offset({0,4}) == 6 && index.offset({0,1}) == 1 && index.offset({0,3}) == 5, "indexed positions also support backward requests");
     wchar_t temp[MAX_PATH], path[MAX_PATH]; GetTempPathW(MAX_PATH, temp); GetTempFileNameW(temp, L"pxs", 0, path);
     WritePrivateProfileStringW(L"px-toolkit", L"gameId", L"vic3", path);
     auto settings = px::loadSettings(path);
@@ -209,7 +274,12 @@ void testLspFeatures() {
     DeleteFileW(path);
 }
 
-int main() {
+int testLspClient();
+int lspFixture(const std::string& mode);
+
+int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--lsp-fixture") return lspFixture(argv[2]);
+    g_failures += testLspClient();
     testLspFeatures();
     testHighlight();
     testClassify();

@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a change to the Notepad++ plugin.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the workflow or limitation, including the game and file type when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain how the feature would work in Notepad++.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and contribution
+      description: Describe any workaround and whether you can help implement or test the change. Contributions are welcome but not required.

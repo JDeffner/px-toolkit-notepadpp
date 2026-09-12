@@ -3,8 +3,8 @@
 #include "resource.h"
 
 1 VERSIONINFO
-FILEVERSION 0,2,0,0
-PRODUCTVERSION 0,2,0,0
+FILEVERSION 0,2,1,0
+PRODUCTVERSION 0,2,1,0
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_DLL
 BEGIN
@@ -13,9 +13,9 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "Paradox Modding Toolkit for Notepad++"
-            VALUE "FileVersion", "0.2.0.0"
+            VALUE "FileVersion", "0.2.1.0"
             VALUE "ProductName", "Paradox Modding Toolkit"
-            VALUE "ProductVersion", "0.2.0"
+            VALUE "ProductVersion", "0.2.1"
             VALUE "LegalCopyright", "Copyright 2026 Joel Deffner"
             VALUE "OriginalFilename", "PxToolkit.dll"
         END
@@ -45,37 +45,46 @@ BEGIN
     CONTROL "", IDC_RESULTS, WC_LISTVIEW, LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_TABSTOP | WS_BORDER, 5, 65, 590, 100
 END
 
-IDD_OPTIONS DIALOGEX 0, 0, 410, 340
+IDD_OPTIONS DIALOGEX 0, 0, 480, 442
 STYLE DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CONTROLPARENT
 CAPTION "Paradox Toolkit options"
 FONT 9, "Segoe UI"
 BEGIN
-    LTEXT "Game", -1, 10, 12, 85, 12
-    COMBOBOX IDC_GAME, 105, 10, 100, 65, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT "Game data folder", -1, 10, 35, 90, 12
-    EDITTEXT IDC_GAMEPATH, 105, 32, 295, 15, ES_AUTOHSCROLL
-    LTEXT "Script docs folder", -1, 10, 57, 90, 12
-    EDITTEXT IDC_LOGSPATH, 105, 54, 295, 15, ES_AUTOHSCROLL
-    LTEXT "Localization language", -1, 10, 79, 92, 12
-    EDITTEXT IDC_LANGUAGE, 105, 76, 120, 15, ES_AUTOHSCROLL
-    LTEXT "Custom server launcher", -1, 10, 101, 95, 12
-    EDITTEXT IDC_COMMAND, 105, 98, 295, 15, ES_AUTOHSCROLL
-    LTEXT "Leave empty to use the bundled server and downloaded updates.", -1, 105, 116, 295, 12
-    CONTROL "Automatic completion", IDC_COMPLETION, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 140, 175, 14
-    CONTROL "Automatic signature help", IDC_SIGNATURE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 140, 185, 14
-    CONTROL "Syntax highlighting", IDC_SYNTAX, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 159, 175, 14
-    CONTROL "Semantic highlighting", IDC_SEMANTIC, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 159, 185, 14
-    CONTROL "Code folding", IDC_FOLDING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 178, 175, 14
-    CONTROL "Automatically update the LSP", IDC_AUTOUPDATE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 210, 178, 185, 14
-    LTEXT "Completion inserts", -1, 10, 203, 92, 12
-    COMBOBOX IDC_MODE, 105, 200, 95, 65, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT "Hover detail", -1, 215, 203, 65, 12
-    COMBOBOX IDC_HOVER, 285, 200, 115, 65, CBS_DROPDOWNLIST | WS_TABSTOP
-    LTEXT "LSP: checked daily on server start; downloads apply on the next server restart. Plugin DLL: install a release and restart Notepad++.", -1, 10, 230, 390, 28
-    PUSHBUTTON "Check LSP now", IDC_CHECK, 10, 262, 100, 18
-    PUSHBUTTON "Plugin releases", IDC_RELEASES, 120, 262, 100, 18
-    LTEXT "", IDC_OPTIONSTATUS, 10, 285, 390, 24
-    DEFPUSHBUTTON "Save and apply", IDOK, 220, 312, 100, 18
-    PUSHBUTTON "Close", IDCANCEL, 330, 312, 70, 18
+    LTEXT "Game", -1, 10, 13, 95, 12
+    COMBOBOX IDC_GAME, 110, 10, 360, 80, CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL
+    LTEXT "Game data folder", -1, 10, 39, 95, 12
+    EDITTEXT IDC_GAMEPATH, 110, 36, 305, 15, ES_AUTOHSCROLL
+    PUSHBUTTON "Browse...", IDC_GAME_BROWSE, 420, 36, 50, 15
+    LTEXT "", IDC_GAMEPATH_HELP, 110, 54, 360, 24
+    LTEXT "Script docs folder", -1, 10, 85, 95, 12
+    EDITTEXT IDC_LOGSPATH, 110, 82, 305, 15, ES_AUTOHSCROLL
+    PUSHBUTTON "Browse...", IDC_LOGS_BROWSE, 420, 82, 50, 15
+    LTEXT "", IDC_LOGSPATH_HELP, 110, 100, 360, 24
+    LTEXT "Localization language", -1, 10, 131, 97, 12
+    COMBOBOX IDC_LANGUAGE, 110, 128, 360, 160, CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL
+    LTEXT "Custom language", IDC_CUSTOMLANGUAGE_LABEL, 10, 153, 95, 12
+    EDITTEXT IDC_CUSTOMLANGUAGE, 110, 150, 360, 15, ES_AUTOHSCROLL
+    LTEXT "", IDC_LANGUAGE_HELP, 110, 168, 360, 24
+    LTEXT "Server override", -1, 10, 201, 95, 12
+    EDITTEXT IDC_COMMAND, 110, 198, 360, 15, ES_AUTOHSCROLL
+    LTEXT "Advanced: leave blank to use the bundled server and compatible downloaded updates. Otherwise, enter an executable or .cmd launcher.", -1, 110, 216, 360, 24
+    CONTROL "Show completion while typing", IDC_COMPLETION, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 248, 225, 14
+    CONTROL "Show argument help while typing", IDC_SIGNATURE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 250, 248, 220, 14
+    CONTROL "Syntax colors", IDC_SYNTAX, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 267, 225, 14
+    CONTROL "Extra colors from language server", IDC_SEMANTIC, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 250, 267, 220, 14
+    CONTROL "Code folding", IDC_FOLDING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 10, 286, 225, 14
+    CONTROL "Check for language server updates", IDC_AUTOUPDATE, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 250, 286, 220, 14
+    LTEXT "Completion inserts", -1, 10, 315, 95, 12
+    COMBOBOX IDC_MODE, 110, 312, 140, 80, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT "Hover detail", -1, 265, 315, 65, 12
+    COMBOBOX IDC_HOVER, 335, 312, 135, 80, CBS_DROPDOWNLIST | WS_TABSTOP
+    LTEXT "", IDC_MODE_HELP, 110, 332, 140, 24
+    LTEXT "", IDC_HOVER_HELP, 335, 332, 135, 24
+    PUSHBUTTON "Check server updates", IDC_CHECK, 10, 362, 110, 18
+    PUSHBUTTON "Plugin releases", IDC_RELEASES, 130, 362, 85, 18
+    LTEXT "Server updates load after a server restart. Plugin updates need a Notepad++ restart.", -1, 230, 360, 240, 24
+    LTEXT "", IDC_OPTIONSTATUS, 10, 390, 460, 22
+    DEFPUSHBUTTON "Save and apply", IDOK, 300, 414, 100, 18
+    PUSHBUTTON "Close", IDCANCEL, 410, 414, 60, 18
 END

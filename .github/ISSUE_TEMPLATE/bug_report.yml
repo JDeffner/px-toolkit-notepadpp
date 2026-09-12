@@ -1,0 +1,32 @@
+name: Bug report
+description: Report unexpected behavior in the Notepad++ plugin.
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, follow the [security policy](https://github.com/JDeffner/px-toolkit-notepadpp/blob/main/SECURITY.md). Remove private paths and content before sharing logs or examples."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Describe the problem and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and setup
+      description: Include plugin and px-lsp versions, Notepad++ version and architecture, host OS and version, game, and installation method. For Wine, also include its version, prefix architecture, and configured Windows version. State whether you use a custom server launcher.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the file type, its location within the mod, and a small synthetic example if possible. Say whether other plugins are needed to reproduce it.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or logs
+      description: For visual problems, include a screenshot and your light/dark theme setting. Share only content you have permission to publish.

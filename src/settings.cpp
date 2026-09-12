@@ -32,10 +32,11 @@ void writeDefaults(const std::wstring& ini) {
         "serverCommand=\r\n"
         "; ck3, vic3 or eu5. One server instance serves one game.\r\n"
         "gameId=ck3\r\n"
-        "; The game's game/ folder, source of vanilla definitions.\r\n"
+        "; The game's game/ folder. Not auto-detected; empty disables vanilla indexing.\r\n"
         "gamePath=\r\n"
-        "; Folder holding the script_docs dumps the game writes.\r\n"
+        "; Generated script_docs folder. Empty uses the server's bundled docs.\r\n"
         "logsPath=\r\n"
+        "; Language key from _l_<language>.yml, without the l_ prefix or colon.\r\n"
         "locLanguage=english\r\n";
     ::fwrite(kTemplate, 1, sizeof(kTemplate) - 1, f);
     ::fclose(f);

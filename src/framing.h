@@ -12,11 +12,16 @@ namespace px {
 
 class FrameParser {
 public:
+    static constexpr size_t maxHeaderBytes = 8192;
+    static constexpr size_t maxBodyBytes = 32 * 1024 * 1024;
+    // Malformed or oversized input throws; the transport must end the session.
     void feed(const char* data, size_t len);
     bool next(std::string& body);
 
 private:
     std::string buf_;
+    size_t bodyStart_ = 0;
+    size_t contentLength_ = 0;
 };
 
 }  // namespace px

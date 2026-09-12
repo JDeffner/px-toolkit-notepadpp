@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <share.h>
 #include <shellapi.h>
+#include <stdexcept>
 
 #include "../sdk/PluginInterface.h"
 #include "classify.h"
@@ -72,6 +73,7 @@ enum MenuIndex {
 
 struct DocState {
     std::string uri;
+    std::wstring modRoot;
     px::Lang lang = px::Lang::None;
     int version = 1;
     bool dirty = false;
@@ -95,9 +97,7 @@ struct CompletionItem {
     std::string label;
     std::string sortText;
     std::string insertText;
-    bool hasRange = false;
-    px::Position rangeStart;
-    px::Position rangeEnd;
+    Json textEdit;
 };
 
 NppData g_npp;
@@ -121,7 +121,7 @@ bool g_initialized = false;
 bool g_applying = false;
 int g_revision = 0;
 int g_generation = 0;
-unsigned g_featureRequest = 0, g_signatureRequest = 0, g_navigationRequest = 0;
+unsigned g_featureRequest = 0, g_signatureRequest = 0, g_navigationRequest = 0, g_completionRequest = 0;
 Json g_capabilities;
 std::vector<std::string> g_legend;
 std::wstring g_status = L"PX: open a mod file";
@@ -258,13 +258,27 @@ struct RequestContext {
     uptr_t buffer;
     bool valid(bool requireActive = true) const {
         const auto* doc = docFor(path);
-        return g_initialized && generation == g_generation && doc && doc->version == version &&
+        return g_initialized && generation == g_generation && doc && doc->opened && doc->version == version &&
                doc->buffer == buffer && (!requireActive || currentBuffer() == buffer);
     }
 };
 RequestContext context() {
     auto* doc = docFor(currentPath());
     return {currentPath(), doc ? doc->version : -1, g_generation, currentBuffer()};
+}
+struct CompletionContext {
+    RequestContext document;
+    Sci_Position caret = -1;
+    unsigned ticket = 0;
+    bool valid() const {
+        return document.valid() && ticket == g_completionRequest && caret == sci(SCI_GETCURRENTPOS);
+    }
+};
+CompletionContext g_completionContext;
+void cancelCompletion() {
+    ++g_completionRequest;
+    g_completion.clear();
+    sci(SCI_AUTOCCANCEL);
 }
 bool supports(const char* name) {
     if (!g_initialized || !g_capabilities.contains(name)) return false;
@@ -322,11 +336,26 @@ std::array<unsigned, 3> serverVersion(const std::wstring& path, std::wstring& te
     return version;
 }
 
-std::wstring updatedServer(const std::wstring& dir) {
+const wchar_t* pluginArchitecture() {
+#if defined(_M_ARM64)
+    return L"arm64";
+#elif defined(_M_IX86)
+    return L"x86";
+#else
+    return L"x64";
+#endif
+}
+
+std::wstring serverCache() {
     wchar_t local[MAX_PATH] = {};
     const DWORD len = ::GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
     if (!len || len >= MAX_PATH) return {};
-    const std::wstring cache = std::wstring(local) + L"\\PxToolkit\\servers";
+    return std::wstring(local) + L"\\PxToolkit\\servers\\" + pluginArchitecture();
+}
+
+std::wstring updatedServer(const std::wstring& dir) {
+    const std::wstring cache = serverCache();
+    if (cache.empty()) return {};
     // The updater never inherits the LSP pipes and never delays editor startup.
     static bool checked = false;
     if (!checked && g_settings.autoUpdateServer) {
@@ -334,7 +363,7 @@ std::wstring updatedServer(const std::wstring& dir) {
         wchar_t system[MAX_PATH] = {};
         ::GetSystemDirectoryW(system, MAX_PATH);
         const std::wstring exe = std::wstring(system) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
-        std::wstring command = L"\"" + exe + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + dir + L"\\update-server.ps1\"";
+        std::wstring command = L"\"" + exe + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + dir + L"\\update-server.ps1\" -Architecture " + pluginArchitecture();
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         PROCESS_INFORMATION process{};
@@ -455,11 +484,14 @@ void startServer(const std::wstring& modPath) {
             return;
         }
         const Json info = result.value("serverInfo", Json::object());
-        g_capabilities = result.value("capabilities", Json::object());
-        g_legend.clear();
-        const auto semantic = g_capabilities.value("semanticTokensProvider", Json());
-        if (semantic.is_object()) g_legend = semantic.value("legend", Json::object()).value("tokenTypes", std::vector<std::string>{});
+        const auto capabilities = result.at("capabilities");
+        if (!capabilities.is_object()) throw std::runtime_error("Invalid server capabilities.");
+        std::vector<std::string> legend;
+        const auto semantic = capabilities.value("semanticTokensProvider", Json());
+        if (semantic.is_object()) legend = semantic.at("legend").at("tokenTypes").get<std::vector<std::string>>();
         appendLog("px-lsp " + info.value("version", std::string("?")) + " initialized");
+        g_capabilities = capabilities;
+        g_legend = std::move(legend);
         g_client.notify("initialized", Json::object());
         g_initialized = true;
         for (auto& pair : g_docs) sendOpen(pair.second);
@@ -469,7 +501,7 @@ void startServer(const std::wstring& modPath) {
 }
 
 void ensureServer(const std::wstring& modPath) {
-    if (g_client.running() && lower(modPath) != lower(g_startedForMod)) resetSession();
+    if (!g_startedForMod.empty() && lower(modPath) != lower(g_startedForMod)) resetSession();
     if (!g_client.running()) startServer(modPath);
 }
 
@@ -543,17 +575,15 @@ void openDocument(const std::wstring& path) {
     if (!validUtf8(bufferText())) { statusBar(L"PX: convert this file to UTF-8 to use language features"); return; }
     ensureServer(fc.modRoot);
     if (!g_client.running()) return;
-    // Save As changes a buffer's URI. Close the old identity before opening it again.
-    for (auto it = g_docs.begin(); it != g_docs.end();) {
-        if (it->second.buffer == currentBuffer() && it->first != lower(path)) {
-            if (it->second.opened) g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", it->second.uri}}}});
-            g_diags.erase(it->second.uri); it = g_docs.erase(it);
-        } else ++it;
+    if (auto* existing = docFor(path)) {
+        existing->modRoot = fc.modRoot;
+        sendOpen(*existing);
+        scheduleFeatures(); refreshProblems(); return;
     }
-    if (docFor(path) != nullptr) { scheduleFeatures(); refreshProblems(); return; }
 
     DocState state;
     state.uri = pathToUri(path);
+    state.modRoot = fc.modRoot;
     state.lang = fc.lang;
     state.version = ++g_revision;
     state.buffer = currentBuffer(); state.pointer = sci(SCI_GETDOCPOINTER); state.text = bufferText();
@@ -564,7 +594,7 @@ void openDocument(const std::wstring& path) {
 }
 
 void sendOpen(DocState& state) {
-    if (!g_initialized || state.opened) return;
+    if (!g_initialized || state.opened || lower(state.modRoot) != lower(g_startedForMod)) return;
     g_client.notify("textDocument/didOpen",
                     {{"textDocument",
                       {{"uri", state.uri},
@@ -588,7 +618,7 @@ void flushChange(const std::wstring& path) {
 void closeDocument(const std::wstring& path) {
     DocState* doc = docFor(path);
     if (doc == nullptr) return;
-    g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", doc->uri}}}});
+    if (doc->opened) g_client.notify("textDocument/didClose", {{"textDocument", {{"uri", doc->uri}}}});
     g_diags.erase(doc->uri);
     g_docs.erase(lower(path));
     refreshProblems();
@@ -658,13 +688,14 @@ void handleNotification(const std::string& method, const Json& params) {
         const auto* source = docFor(uriToPath(uri));
         if (source && params.contains("version") && params["version"].is_number_integer() && params["version"].get<int>() != source->version) return;
         std::vector<Diagnostic> list;
-        for (const Json& d : params.value("diagnostics", Json::array())) {
-            if (!d.is_object() || !d.contains("range")) continue;
+        const auto& diagnostics = params.at("diagnostics");
+        if (!diagnostics.is_array()) throw std::runtime_error("Invalid diagnostics list.");
+        for (const Json& d : diagnostics) {
             Diagnostic entry;
-            entry.start.line = d["range"]["start"].value("line", 0);
-            entry.start.character = d["range"]["start"].value("character", 0);
-            entry.end.line = d["range"]["end"].value("line", 0);
-            entry.end.character = d["range"]["end"].value("character", 0);
+            entry.start.line = d.at("range").at("start").value("line", 0);
+            entry.start.character = d.at("range").at("start").value("character", 0);
+            entry.end.line = d.at("range").at("end").value("line", 0);
+            entry.end.character = d.at("range").at("end").value("character", 0);
             entry.severity = d.value("severity", 1);
             entry.message = d.value("message", std::string());
             entry.raw = d;
@@ -684,10 +715,14 @@ void handleNotification(const std::string& method, const Json& params) {
         g_status = line;
         statusBar(g_status);
         if (!params.value("indexing", false)) scheduleFeatures();
+    } else if (method == "$/clientError") {
+        appendLog(params.at("message").get<std::string>());
+        statusBar(L"PX: language server error. See server log.");
     } else if (method == "$/serverExited") {
         g_initialized = false;
         ++g_generation;
-        for (auto& pair : g_docs) { pair.second.opened = false; pair.second.semantic.clear(); }
+        for (auto& pair : g_docs) { pair.second.opened = false; pair.second.semantic.clear(); pair.second.semanticVersion = -1; }
+        cancelCompletion();
         styleDocument();
         px::panelStatus(L"Language server stopped. Use Restart server to reconnect.");
         statusBar(L"PX: server stopped");
@@ -753,86 +788,78 @@ void requestHover(Sci_Position position) {
 }
 
 void requestCompletion() {
-    if (!supports("completionProvider")) return;
-    const auto request = context();
-    DocState* doc = docFor(currentPath());
-    if (doc == nullptr || !g_client.running()) return;
-    const std::string text = bufferText();
-    const Sci_Position caret = static_cast<Sci_Position>(sci(SCI_GETCURRENTPOS));
-    const px::Position pos = px::offsetToPosition(text, static_cast<size_t>(caret));
-
+    cancelCompletion();
+    if (!supports("completionProvider") || sci(SCI_GETREADONLY)) return;
+    const auto* doc = docFor(currentPath());
+    if (!doc || !g_client.running()) return;
+    const auto caret = static_cast<Sci_Position>(sci(SCI_GETCURRENTPOS));
+    const CompletionContext request{context(), caret, g_completionRequest};
+    const auto pos = px::offsetToPosition(doc->text, static_cast<size_t>(caret));
     g_client.request("textDocument/completion",
-                     {{"textDocument", {{"uri", doc->uri}}},
-                      {"position", {{"line", pos.line}, {"character", pos.character}}}},
-                     [request](const Json& result, const Json& error) {
-                         if (!request.valid() || !error.is_null()) return;
-                         const Json items = result.is_array() ? result
-                                                              : (result.is_object() ? result.value("items", Json::array())
-                                                                                    : Json::array());
-                         g_completion.clear();
-                         for (const Json& item : items) {
-                             CompletionItem entry;
-                             entry.label = item.value("label", std::string());
-                             if (entry.label.empty() || entry.label.find('\n') != std::string::npos) continue;
-                             entry.sortText = item.value("sortText", entry.label);
-                             entry.insertText = item.value("insertText", entry.label);
-                             const Json edit = item.value("textEdit", Json());
-                             if (edit.is_object() && edit.contains("range")) {
-                                 entry.hasRange = true;
-                                 entry.rangeStart.line = edit["range"]["start"].value("line", 0);
-                                 entry.rangeStart.character = edit["range"]["start"].value("character", 0);
-                                 entry.rangeEnd.line = edit["range"]["end"].value("line", 0);
-                                 entry.rangeEnd.character = edit["range"]["end"].value("character", 0);
-                                 entry.insertText = edit.value("newText", entry.insertText);
-                             }
-                             g_completion.push_back(entry);
-                         }
-                         if (g_completion.empty()) return;
-                         std::stable_sort(g_completion.begin(), g_completion.end(),
-                                          [](const CompletionItem& a, const CompletionItem& b) {
-                                              return a.sortText < b.sortText;
-                                          });
-
-                         std::string list;
-                         for (const CompletionItem& item : g_completion) {
-                             if (!list.empty()) list += "\n";
-                             list += item.label;
-                         }
-                         const Sci_Position here = static_cast<Sci_Position>(sci(SCI_GETCURRENTPOS));
-                         const Sci_Position wordStart = static_cast<Sci_Position>(
-                             sci(SCI_WORDSTARTPOSITION, static_cast<WPARAM>(here), 1));
-                         sci(SCI_AUTOCSETSEPARATOR, '\n');
-                         sci(SCI_AUTOCSETIGNORECASE, 1);
-                         // The server already ranked the list; keep its order.
-                         sci(SCI_AUTOCSETORDER, SC_ORDER_CUSTOM);
-                         sci(SCI_AUTOCSETMAXHEIGHT, 12);
-                         sci(SCI_AUTOCSHOW, static_cast<WPARAM>(here - wordStart),
-                             reinterpret_cast<LPARAM>(list.c_str()));
-                     });
+        {{"textDocument", {{"uri", doc->uri}}}, {"position", {{"line", pos.line}, {"character", pos.character}}}},
+        [request](const Json& result, const Json& error) {
+            if (!request.valid() || !error.is_null() || result.is_null()) return;
+            const Json items = result.is_array() ? result : result.at("items");
+            if (!items.is_array()) throw std::runtime_error("Invalid completion item list.");
+            std::vector<CompletionItem> completion;
+            const auto text = bufferText();
+            const px::TextPositions positions(text);
+            Sci_Position prefixStart = static_cast<Sci_Position>(sci(SCI_WORDSTARTPOSITION, request.caret, 1));
+            for (const auto& item : items) {
+                CompletionItem entry;
+                entry.label = item.at("label").get<std::string>();
+                if (entry.label.empty() || entry.label.find_first_of("\r\n") != std::string::npos) continue;
+                entry.sortText = item.value("sortText", entry.label);
+                entry.insertText = item.value("insertText", entry.label);
+                if (item.contains("textEdit")) {
+                    entry.textEdit = item.at("textEdit");
+                    const auto edits = px::textEdits(positions, Json::array({entry.textEdit}));
+                    const auto& edit = edits.front();
+                    if (edit.start > static_cast<size_t>(request.caret) || edit.end < static_cast<size_t>(request.caret))
+                        throw std::runtime_error("Completion range does not contain its request position.");
+                    prefixStart = (std::min)(prefixStart, static_cast<Sci_Position>(edit.start));
+                }
+                completion.push_back(std::move(entry));
+            }
+            if (completion.empty()) return;
+            std::stable_sort(completion.begin(), completion.end(), [](const auto& a, const auto& b) { return a.sortText < b.sortText; });
+            std::string list;
+            for (const auto& item : completion) { if (!list.empty()) list += "\n"; list += item.label; }
+            g_completion = std::move(completion);
+            g_completionContext = request;
+            sci(SCI_AUTOCSETSEPARATOR, '\n');
+            sci(SCI_AUTOCSETIGNORECASE, 1);
+            sci(SCI_AUTOCSETORDER, SC_ORDER_CUSTOM);
+            sci(SCI_AUTOCSETMAXHEIGHT, 12);
+            sci(SCI_AUTOCSHOW, request.caret - prefixStart, reinterpret_cast<LPARAM>(list.c_str()));
+        });
 }
 
 void applyCompletion(const SCNotification* notify) {
-    const std::string chosen = notify->text != nullptr ? notify->text : "";
-    const auto it = std::find_if(g_completion.begin(), g_completion.end(),
-                                 [&](const CompletionItem& c) { return c.label == chosen; });
+    const std::string chosen = notify->text ? notify->text : "";
+    const auto it = std::find_if(g_completion.begin(), g_completion.end(), [&](const auto& item) { return item.label == chosen; });
     if (it == g_completion.end()) return;
-
-    // Cancel Scintilla's own insertion; the server's edit is the authority.
-    sci(SCI_AUTOCCANCEL);
-    const std::string text = bufferText();
-    size_t start = static_cast<size_t>(notify->position);
-    size_t end = static_cast<size_t>(sci(SCI_GETCURRENTPOS));
-    if (it->hasRange) {
-        start = px::positionToOffset(text, it->rangeStart);
-        end = px::positionToOffset(text, it->rangeEnd);
-        if (end < static_cast<size_t>(sci(SCI_GETCURRENTPOS))) end = static_cast<size_t>(sci(SCI_GETCURRENTPOS));
-    }
-    sci(SCI_BEGINUNDOACTION);
-    sci(SCI_SETTARGETRANGE, static_cast<WPARAM>(start), static_cast<LPARAM>(end));
-    sci(SCI_REPLACETARGET, static_cast<WPARAM>(it->insertText.size()),
-        reinterpret_cast<LPARAM>(it->insertText.c_str()));
-    sci(SCI_ENDUNDOACTION);
-    sci(SCI_GOTOPOS, static_cast<WPARAM>(start + it->insertText.size()));
+    const auto item = *it; // cancellation and insertion can deliver notifications
+    const bool valid = g_completionContext.valid() && !sci(SCI_GETREADONLY);
+    cancelCompletion();
+    if (!valid) return;
+    const auto text = bufferText();
+    try {
+        Json edit = item.textEdit;
+        if (edit.is_null()) {
+            const auto start = px::offsetToPosition(text, static_cast<size_t>(notify->position));
+            const auto end = px::offsetToPosition(text, static_cast<size_t>(sci(SCI_GETCURRENTPOS)));
+            edit = {{"range", {{"start", {{"line", start.line}, {"character", start.character}}},
+                              {"end", {{"line", end.line}, {"character", end.character}}}}}, {"newText", item.insertText}};
+        }
+        const auto edits = px::textEdits(text, Json::array({edit}));
+        const auto& e = edits.front();
+        sci(SCI_BEGINUNDOACTION);
+        sci(SCI_SETTARGETRANGE, e.start, e.end);
+        sci(SCI_REPLACETARGET, e.text.size(), reinterpret_cast<LPARAM>(e.text.c_str()));
+        sci(SCI_ENDUNDOACTION);
+        sci(SCI_GOTOPOS, e.start + e.text.size());
+    } catch (const std::exception& e) { appendLog(e.what()); statusBar(L"PX: invalid completion edit. See server log."); }
 }
 
 void gotoDefinition() {
@@ -862,8 +889,8 @@ void gotoDefinition() {
                          ::SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(path.c_str()));
                          if (lower(currentPath()) != lower(path)) return;
                          px::Position target;
-                         target.line = range["start"].value("line", 0);
-                         target.character = range["start"].value("character", 0);
+                         target.line = range.at("start").value("line", 0);
+                         target.character = range.at("start").value("character", 0);
                          const size_t offset = px::positionToOffset(bufferText(), target);
                          sci(SCI_GOTOPOS, static_cast<WPARAM>(offset));
                          sci(SCI_SCROLLCARET);
@@ -1068,8 +1095,11 @@ void requestDocumentFeatures() {
         });
     }
     if (g_settings.folding && supports("foldingRangeProvider")) {
-        sci(SCI_SETMARGINTYPEN, 2, SC_MARGIN_SYMBOL); sci(SCI_SETMARGINMASKN, 2, SC_MASK_FOLDERS);
-        sci(SCI_SETMARGINWIDTHN, 2, 16); sci(SCI_SETMARGINSENSITIVEN, 2, 1);
+        // Notepad++ reserves margin 2 for change history and margin 3 for folds.
+        // Removing the history mask makes its markers color entire lines.
+        constexpr int foldingMargin = 3;
+        sci(SCI_SETMARGINTYPEN, foldingMargin, SC_MARGIN_SYMBOL); sci(SCI_SETMARGINMASKN, foldingMargin, SC_MASK_FOLDERS);
+        sci(SCI_SETMARGINWIDTHN, foldingMargin, 16); sci(SCI_SETMARGINSENSITIVEN, foldingMargin, 1);
         g_client.request("textDocument/foldingRange", params, [request, ticket](const Json& result, const Json& error) {
             if (request.valid() && ticket == g_featureRequest && error.is_null() && result.is_array()) applyFolds(result);
         });
@@ -1169,7 +1199,7 @@ void beginEditRequest() {
     for (const auto& pair : g_docs) flushChange(pair.first);
     g_editOrigin = context(); g_editVersions.clear();
     GetSystemTimeAsFileTime(&g_editStarted);
-    for (const auto& pair : g_docs) g_editVersions[pair.first] = pair.second.version;
+    for (const auto& pair : g_docs) if (pair.second.opened) g_editVersions[pair.first] = pair.second.version;
 }
 bool editRequestValid() {
     if (!g_editOrigin.valid(false)) return false;
@@ -1354,9 +1384,13 @@ void resetSession() {
     ++g_generation;
     g_initialized = false;
     g_client.stop();
-    g_docs.clear();
+    for (auto& pair : g_docs) {
+        pair.second.opened = false;
+        pair.second.semantic.clear();
+        pair.second.semanticVersion = -1;
+    }
+    cancelCompletion();
     g_diags.clear();
-    g_startedForMod.clear();
     g_signatureVisible = false;
     sci(SCI_CALLTIPCANCEL);
     refreshProblems();
@@ -1376,9 +1410,9 @@ void showOptions() {
         const auto dir = moduleDir();
         wchar_t system[MAX_PATH]{}; GetSystemDirectoryW(system, MAX_PATH);
         const std::wstring exe = std::wstring(system) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
-        std::wstring command = L"\"" + exe + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + dir + L"\\update-server.ps1\" -Force";
+        std::wstring command = L"\"" + exe + L"\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + dir + L"\\update-server.ps1\" -Force -Architecture " + pluginArchitecture();
         STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
-        if (!CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, dir.c_str(), &startup, &process)) { px::optionsStatus(L"Could not start the update check."); return; }
+        if (!CreateProcessW(exe.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, dir.c_str(), &startup, &process)) { px::optionsStatus(L"Could not start PowerShell. Update manually by installing a plugin package."); return; }
         CloseHandle(process.hThread); g_updateProcess = process.hProcess;
         SetTimer(g_sink, 3, 500, nullptr);
         px::optionsStatus(L"Checking for an LSP update...");
@@ -1413,10 +1447,9 @@ LRESULT CALLBACK sinkProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
     }
     if (msg == WM_TIMER && w == 3 && g_updateProcess && WaitForSingleObject(g_updateProcess, 0) != WAIT_TIMEOUT) {
         KillTimer(hwnd, 3); CloseHandle(g_updateProcess); g_updateProcess = nullptr;
-        wchar_t local[MAX_PATH]{}; GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH);
-        std::ifstream input(std::wstring(local) + L"\\PxToolkit\\servers\\status.txt");
+        std::ifstream input(serverCache() + L"\\status.txt");
         std::string result; std::getline(input, result);
-        px::optionsStatus(result.empty() ? L"Check finished. See %LOCALAPPDATA%\\PxToolkit\\servers\\update.log for details." : toWide(result));
+        px::optionsStatus(result.empty() ? L"Check finished without a status. See the update.log in the architecture-specific server cache." : toWide(result));
         return 0;
     }
     return ::DefWindowProc(hwnd, msg, w, l);
@@ -1558,6 +1591,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
 
         case NPPN_FILEOPENED:
         case NPPN_BUFFERACTIVATED: {
+            cancelCompletion();
             g_signatureVisible = false; g_dwelling = false;
             sci(SCI_CALLTIPCANCEL);
             const std::wstring path = pathOfBuffer(notify->nmhdr.idFrom);
@@ -1578,7 +1612,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
             flushChange(path);
             // The server re-reads the file's BOM from disk on save, so this is
             // more than a re-validation trigger.
-            g_client.notify("textDocument/didSave", {{"textDocument", {{"uri", doc->uri}}}});
+            if (doc->opened) g_client.notify("textDocument/didSave", {{"textDocument", {{"uri", doc->uri}}}});
             break;
         }
 
@@ -1603,7 +1637,11 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notify) {
                         invalidatePreview(); statusBar(L"PX: convert this file to UTF-8 to use language features");
                         break;
                     }
-                    doc.text = updated; doc.version = ++g_revision; doc.dirty = true; doc.semanticVersion = -1;
+                    cancelCompletion();
+                    const bool styled = doc.semanticVersion == doc.version;
+                    if (styled) px::rebaseSemanticSpans(doc.semantic, doc.text, updated);
+                    doc.text = updated; doc.version = ++g_revision; doc.dirty = true;
+                    doc.semanticVersion = styled ? doc.version : -1;
                     if (!g_applying) invalidatePreview();
                     SetTimer(g_sink, TIMER_SYNC, SYNC_DEBOUNCE_MS, nullptr);
                     scheduleFeatures();

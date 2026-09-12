@@ -2,6 +2,9 @@
 #include <commctrl.h>
 #include <array>
 #include <algorithm>
+#include <shobjidl.h>
+#include <shlobj.h>
+#include <utility>
 #include "resource.h"
 #include "../sdk/Notepad_plus_msgs.h"
 #include "../sdk/Docking.h"
@@ -38,6 +41,86 @@ void combo(HWND dlg, int id, std::initializer_list<const wchar_t*> items, const 
         ++index;
     }
     SendMessage(control, CB_SETCURSEL, chosen, 0);
+}
+struct Choice { const wchar_t* label; const wchar_t* value; };
+const Choice games[] = {{L"Crusader Kings III", L"ck3"}, {L"Victoria 3", L"vic3"}, {L"Europa Universalis V", L"eu5"}};
+// Same nine language keys as px-lsp's protocol/translationCore.ts.
+const Choice languages[] = {
+    {L"English", L"english"}, {L"French", L"french"}, {L"German", L"german"},
+    {L"Spanish", L"spanish"}, {L"Russian", L"russian"}, {L"Korean", L"korean"},
+    {L"Chinese (Simplified)", L"simp_chinese"}, {L"Japanese", L"japanese"}, {L"Polish", L"polish"},
+    {L"Other (custom language)", L""}
+};
+const Choice completionModes[] = {{L"Minimal structure", L"minimal"}, {L"Example blocks", L"examples"}, {L"Names only", L"names"}};
+const Choice hoverDetails[] = {{L"Compact", L"compact"}, {L"Standard", L"standard"}, {L"Full", L"full"}};
+template<size_t N> void choiceCombo(HWND dlg, int id, const Choice (&choices)[N], const std::wstring& value, int fallback = 0) {
+    HWND control = GetDlgItem(dlg, id);
+    SendMessage(control, CB_RESETCONTENT, 0, 0);
+    int chosen = fallback;
+    for (size_t i = 0; i < N; ++i) {
+        const auto index = SendMessageW(control, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(choices[i].label));
+        SendMessage(control, CB_SETITEMDATA, index, reinterpret_cast<LPARAM>(choices[i].value));
+        if (value == choices[i].value) chosen = static_cast<int>(i);
+    }
+    SendMessage(control, CB_SETCURSEL, chosen, 0);
+}
+std::wstring choiceValue(HWND dlg, int id) {
+    const auto selected = SendDlgItemMessage(dlg, id, CB_GETCURSEL, 0, 0);
+    if (selected == CB_ERR) return L"";
+    const auto value = SendDlgItemMessage(dlg, id, CB_GETITEMDATA, selected, 0);
+    return value == CB_ERR ? L"" : reinterpret_cast<const wchar_t*>(value);
+}
+std::wstring trim(std::wstring value) {
+    const auto first = value.find_first_not_of(L" \t\r\n");
+    return first == std::wstring::npos ? L"" : value.substr(first, value.find_last_not_of(L" \t\r\n") - first + 1);
+}
+void updateOptionHelp(HWND hwnd) {
+    const bool custom = choiceValue(hwnd, IDC_LANGUAGE).empty();
+    EnableWindow(GetDlgItem(hwnd, IDC_CUSTOMLANGUAGE), custom);
+    EnableWindow(GetDlgItem(hwnd, IDC_CUSTOMLANGUAGE_LABEL), custom);
+    const auto language = custom ? trim(text(hwnd, IDC_CUSTOMLANGUAGE)) : choiceValue(hwnd, IDC_LANGUAGE);
+    const auto locHelp = language.empty() ? L"Enter a custom language key, such as braz_por. Use lowercase letters and underscores." : L"Localization files: *_l_" + language + L".yml; header: l_" + language + L":";
+    SetDlgItemTextW(hwnd, IDC_LANGUAGE_HELP, locHelp.c_str());
+    for (const auto ids : {std::pair<int,int>{IDC_GAMEPATH, IDC_GAMEPATH_HELP}, {IDC_LOGSPATH, IDC_LOGSPATH_HELP}}) {
+        const auto path = trim(text(hwnd, ids.first));
+        const auto attributes = GetFileAttributesW(path.c_str());
+        const wchar_t* help;
+        if (path.empty()) help = ids.first == IDC_GAMEPATH ? L"Not detected automatically. Blank: vanilla game files are not indexed." : L"Blank: use bundled script docs. Choose your generated docs to match your game version.";
+        else if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) help = L"Folder not found. Check the path or choose Browse.";
+        else help = ids.first == IDC_GAMEPATH ? L"Use the game's game subfolder, not the launcher folder. Changes apply after Save." : L"Use the folder containing generated script_docs files. Changes apply after Save.";
+        SetDlgItemTextW(hwnd, ids.second, help);
+    }
+    const auto mode = choiceValue(hwnd, IDC_MODE);
+    SetDlgItemTextW(hwnd, IDC_MODE_HELP, mode == L"names" ? L"Insert names without a value or block." : mode == L"examples" ? L"Insert example values and blocks when available." : L"Insert a small value or block template when available.");
+    const auto hover = choiceValue(hwnd, IDC_HOVER);
+    SetDlgItemTextW(hwnd, IDC_HOVER_HELP, hover == L"compact" ? L"Short descriptions with fewer examples." : hover == L"full" ? L"Longer documentation and more examples." : L"A balance of descriptions and examples.");
+}
+void browseFolder(HWND hwnd, int id) {
+    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    IFileDialog* picker = nullptr;
+    HRESULT result = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&picker));
+    if (SUCCEEDED(result)) {
+        DWORD flags = 0; picker->GetOptions(&flags);
+        picker->SetOptions(flags | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR);
+        picker->SetTitle(id == IDC_GAMEPATH ? L"Choose the game's game folder" : L"Choose the generated script docs folder");
+        IShellItem* folder = nullptr;
+        const auto current = trim(text(hwnd, id));
+        if (!current.empty() && SUCCEEDED(SHCreateItemFromParsingName(current.c_str(), nullptr, IID_PPV_ARGS(&folder)))) { picker->SetFolder(folder); folder->Release(); }
+        result = picker->Show(hwnd);
+        if (SUCCEEDED(result)) {
+            IShellItem* selected = nullptr;
+            result = picker->GetResult(&selected);
+            if (SUCCEEDED(result)) {
+                PWSTR path = nullptr;
+                result = selected->GetDisplayName(SIGDN_FILESYSPATH, &path);
+                if (SUCCEEDED(result)) { SetDlgItemTextW(hwnd, id, path); CoTaskMemFree(path); }
+                selected->Release();
+            }
+        }
+        picker->Release();
+    }
+    if (SUCCEEDED(initialized)) CoUninitialize();
+    if (FAILED(result) && result != HRESULT_FROM_WIN32(ERROR_CANCELLED)) optionsStatus(L"Could not open the folder picker. Enter the folder path manually.");
 }
 void render() {
     if (!panel) return;
@@ -157,13 +240,23 @@ INT_PTR CALLBACK panelProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
 }
 INT_PTR CALLBACK optionsProc(HWND hwnd, UINT msg, WPARAM w, LPARAM) {
     if (msg == WM_COMMAND) {
+        if (LOWORD(w) == IDC_GAME_BROWSE || LOWORD(w) == IDC_LOGS_BROWSE) { browseFolder(hwnd, LOWORD(w) == IDC_GAME_BROWSE ? IDC_GAMEPATH : IDC_LOGSPATH); return TRUE; }
+        if (HIWORD(w) == CBN_SELCHANGE || ((LOWORD(w) == IDC_GAMEPATH || LOWORD(w) == IDC_LOGSPATH || LOWORD(w) == IDC_CUSTOMLANGUAGE) && HIWORD(w) == EN_CHANGE)) updateOptionHelp(hwnd);
         if (LOWORD(w) == IDCANCEL) { ShowWindow(hwnd, SW_HIDE); return TRUE; }
         if (LOWORD(w) == IDC_CHECK || LOWORD(w) == IDC_RELEASES) { updateAction(LOWORD(w) == IDC_CHECK); return TRUE; }
         if (LOWORD(w) == IDOK) {
             Settings s;
-            s.gameId = text(hwnd, IDC_GAME); s.gamePath = text(hwnd, IDC_GAMEPATH); s.logsPath = text(hwnd, IDC_LOGSPATH);
-            s.locLanguage = text(hwnd, IDC_LANGUAGE); s.serverCommand = text(hwnd, IDC_COMMAND);
-            s.completionMode = text(hwnd, IDC_MODE); s.hoverDetail = text(hwnd, IDC_HOVER);
+            s.gameId = choiceValue(hwnd, IDC_GAME); s.gamePath = trim(text(hwnd, IDC_GAMEPATH)); s.logsPath = trim(text(hwnd, IDC_LOGSPATH));
+            s.locLanguage = choiceValue(hwnd, IDC_LANGUAGE);
+            if (s.locLanguage.empty()) {
+                s.locLanguage = trim(text(hwnd, IDC_CUSTOMLANGUAGE));
+                if (s.locLanguage.empty() || !std::all_of(s.locLanguage.begin(), s.locLanguage.end(), [](wchar_t c) { return (c >= L'a' && c <= L'z') || c == L'_'; })) {
+                    optionsStatus(L"Enter a custom language name using lowercase letters and underscores, for example braz_por. Do not include l_ or a colon.");
+                    SetFocus(GetDlgItem(hwnd, IDC_CUSTOMLANGUAGE)); return TRUE;
+                }
+            }
+            s.serverCommand = trim(text(hwnd, IDC_COMMAND));
+            s.completionMode = choiceValue(hwnd, IDC_MODE); s.hoverDetail = choiceValue(hwnd, IDC_HOVER);
             s.automaticCompletion = IsDlgButtonChecked(hwnd, IDC_COMPLETION) == BST_CHECKED;
             s.signatureHelp = IsDlgButtonChecked(hwnd, IDC_SIGNATURE) == BST_CHECKED;
             s.syntaxHighlighting = IsDlgButtonChecked(hwnd, IDC_SYNTAX) == BST_CHECKED;
@@ -210,11 +303,17 @@ void showOptions(const Settings& s, std::function<bool(const Settings&)> apply, 
         SendMessage(parent, NPPM_MODELESSDIALOG, MODELESSDIALOGADD, reinterpret_cast<LPARAM>(options));
         SendMessage(parent, NPPM_DARKMODESUBCLASSANDTHEME, NppDarkMode::dmfInit, reinterpret_cast<LPARAM>(options));
     }
-    combo(options, IDC_GAME, {L"ck3", L"vic3", L"eu5"}, s.gameId);
-    combo(options, IDC_MODE, {L"minimal", L"examples", L"names"}, s.completionMode);
-    combo(options, IDC_HOVER, {L"compact", L"standard", L"full"}, s.hoverDetail);
+    choiceCombo(options, IDC_GAME, games, s.gameId);
+    choiceCombo(options, IDC_MODE, completionModes, s.completionMode);
+    choiceCombo(options, IDC_HOVER, hoverDetails, s.hoverDetail);
+    choiceCombo(options, IDC_LANGUAGE, languages, s.locLanguage, 9);
     SetDlgItemTextW(options, IDC_GAMEPATH, s.gamePath.c_str()); SetDlgItemTextW(options, IDC_LOGSPATH, s.logsPath.c_str());
-    SetDlgItemTextW(options, IDC_LANGUAGE, s.locLanguage.c_str()); SetDlgItemTextW(options, IDC_COMMAND, s.serverCommand.c_str());
+    SetDlgItemTextW(options, IDC_CUSTOMLANGUAGE, choiceValue(options, IDC_LANGUAGE).empty() ? s.locLanguage.c_str() : L"");
+    SetDlgItemTextW(options, IDC_COMMAND, s.serverCommand.c_str());
+    SendDlgItemMessage(options, IDC_GAMEPATH, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Optional: path to your game's game folder"));
+    SendDlgItemMessage(options, IDC_LOGSPATH, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Optional: leave blank for bundled script docs"));
+    SendDlgItemMessage(options, IDC_CUSTOMLANGUAGE, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Choose Other above to enter a custom language"));
+    updateOptionHelp(options);
     const int ids[] = {IDC_COMPLETION, IDC_SIGNATURE, IDC_SYNTAX, IDC_SEMANTIC, IDC_FOLDING, IDC_AUTOUPDATE};
     const bool values[] = {s.automaticCompletion, s.signatureHelp, s.syntaxHighlighting, s.semanticHighlighting, s.folding, s.autoUpdateServer};
     for (int i = 0; i < 6; ++i) CheckDlgButton(options, ids[i], values[i] ? BST_CHECKED : BST_UNCHECKED);

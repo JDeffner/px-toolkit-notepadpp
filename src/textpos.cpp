@@ -1,4 +1,5 @@
 #include "textpos.h"
+#include <stdexcept>
 
 namespace px {
 namespace {
@@ -43,6 +44,30 @@ size_t positionToOffset(const std::string& utf8, Position pos) {
         // Swallow the continuation bytes of this sequence.
         while (i < utf8.size() && unitsForLeadByte(static_cast<unsigned char>(utf8[i])) == 0) ++i;
     }
+    return i;
+}
+
+TextPositions::TextPositions(const std::string& text) : text_(text), lines_{0} {
+    for (size_t i = 0; i < text.size(); ++i) if (text[i] == '\n') lines_.push_back(i + 1);
+}
+
+size_t TextPositions::offset(Position pos, bool append) const {
+    if (pos.line < 0 || pos.character < 0) throw std::runtime_error("Negative text position.");
+    if (append && static_cast<size_t>(pos.line) == lines_.size() && pos.character == 0) return text_.size();
+    if (static_cast<size_t>(pos.line) >= lines_.size()) throw std::runtime_error("Text position is outside the document.");
+    size_t i = lines_[pos.line];
+    int remaining = pos.character;
+    if (cursor_.line == pos.line && cursor_.character <= pos.character) {
+        i = cursorOffset_;
+        remaining -= cursor_.character;
+    }
+    while (remaining > 0 && i < text_.size() && text_[i] != '\r' && text_[i] != '\n') {
+        remaining -= unitsForLeadByte(static_cast<unsigned char>(text_[i++]));
+        while (i < text_.size() && unitsForLeadByte(static_cast<unsigned char>(text_[i])) == 0) ++i;
+    }
+    if (remaining != 0) throw std::runtime_error("Text position is outside the line or splits a UTF-16 character.");
+    cursor_ = pos;
+    cursorOffset_ = i;
     return i;
 }
 

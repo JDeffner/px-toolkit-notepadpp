@@ -3,27 +3,30 @@
 #include <algorithm>
 #include <map>
 #include <stdexcept>
+#include <limits>
 
 namespace px {
 using Json = nlohmann::json;
 namespace {
-size_t offset(const std::string& text, const Json& p, bool append) {
-    Position pos{p.at("line").get<int>(), p.at("character").get<int>()};
-    if (pos.line < 0 || pos.character < 0) throw std::runtime_error("Negative edit position.");
-    const size_t result = positionToOffset(text, pos);
-    const auto actual = offsetToPosition(text, result);
-    if (actual.line == pos.line && actual.character == pos.character) return result;
-    if (append && result == text.size() && pos.character == 0 && pos.line == actual.line + 1) return result;
-    throw std::runtime_error("Edit position is outside the document or splits a UTF-16 character.");
+int unsignedInt(const Json& value) {
+    if (!value.is_number_integer() || value < 0 || value > (std::numeric_limits<int>::max)())
+        throw std::runtime_error("Expected a nonnegative 32-bit integer.");
+    return value.get<int>();
+}
+size_t offset(const TextPositions& positions, const Json& p, bool append) {
+    return positions.offset({unsignedInt(p.at("line")), unsignedInt(p.at("character"))}, append);
 }
 }
 std::vector<TextEdit> textEdits(const std::string& text, const Json& edits) {
+    return textEdits(TextPositions(text), edits);
+}
+std::vector<TextEdit> textEdits(const TextPositions& positions, const Json& edits) {
     if (!edits.is_array()) throw std::runtime_error("Expected a list of text edits.");
     std::vector<TextEdit> result;
     for (const auto& edit : edits) {
         const auto& range = edit.at("range");
         const bool append = range.at("start") == range.at("end");
-        const size_t start = offset(text, range.at("start"), append), end = offset(text, range.at("end"), append);
+        const size_t start = offset(positions, range.at("start"), append), end = offset(positions, range.at("end"), append);
         if (end < start) throw std::runtime_error("Reversed edit range.");
         result.push_back({start, end, edit.at("newText").get<std::string>()});
     }
@@ -79,19 +82,47 @@ std::vector<int> foldingLevels(int lineCount, const Json& ranges) {
     for (int i = 0; i < lineCount; ++i) { depth += delta[i]; levels[i] = (std::min)(base + depth, 0xfff) | headers[i]; }
     return levels;
 }
+void rebaseSemanticSpans(std::vector<SemanticSpan>& spans, const std::string& before, const std::string& after) {
+    if (spans.empty() || before == after) return;
+    size_t start = 0;
+    while (start < before.size() && start < after.size() && before[start] == after[start]) ++start;
+    size_t oldEnd = before.size(), newEnd = after.size();
+    while (oldEnd > start && newEnd > start && before[oldEnd - 1] == after[newEnd - 1]) { --oldEnd; --newEnd; }
+    const auto word = [](unsigned char c) {
+        return c >= 128 || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '@' || c == '$' || c == ':';
+    };
+    size_t retained = 0;
+    for (auto span : spans) {
+        if (span.end <= start) {
+            // Inserting or joining identifier characters changes the adjacent token too.
+            if (span.end == start && start < after.size() && word(after[start])) continue;
+        } else if (span.start >= oldEnd) {
+            if (span.start == oldEnd && newEnd > 0 && word(after[newEnd - 1])) continue;
+            span.start = newEnd + (span.start - oldEnd);
+            span.end = newEnd + (span.end - oldEnd);
+        } else continue;
+        spans[retained++] = span;
+    }
+    spans.resize(retained);
+}
+
 std::vector<SemanticSpan> semanticSpans(const std::string& text, const Json& data, const std::vector<std::string>& legend) {
     if (!data.is_array() || data.size() % 5) throw std::runtime_error("Invalid semantic token data.");
     const std::vector<std::string> known = {"method", "function", "variable", "property", "macro", "event", "enumMember", "string"};
     std::vector<SemanticSpan> result;
+    const TextPositions positions(text);
     int line = 0, character = 0;
     for (size_t i = 0; i < data.size(); i += 5) {
-        const int dl = data[i].get<int>(), dc = data[i + 1].get<int>(), length = data[i + 2].get<int>(), type = data[i + 3].get<int>();
-        if (dl < 0 || dc < 0 || length <= 0 || type < 0 || static_cast<size_t>(type) >= legend.size()) throw std::runtime_error("Invalid semantic token.");
+        const int dl = unsignedInt(data[i]), dc = unsignedInt(data[i + 1]), length = unsignedInt(data[i + 2]), type = unsignedInt(data[i + 3]);
+        unsignedInt(data[i + 4]);
+        const int max = (std::numeric_limits<int>::max)();
+        if (length == 0 || static_cast<size_t>(type) >= legend.size() || dl > max - line || (!dl && dc > max - character)) throw std::runtime_error("Invalid semantic token.");
         line += dl; character = dl ? dc : character + dc;
+        if (length > max - character) throw std::runtime_error("Semantic token length overflow.");
         const auto it = std::find(known.begin(), known.end(), legend[type]);
+        const size_t start = positions.offset({line, character});
+        const size_t end = positions.offset({line, character + length});
         if (it == known.end()) continue;
-        const size_t start = offset(text, {{"line", line}, {"character", character}}, false);
-        const size_t end = offset(text, {{"line", line}, {"character", character + length}}, false);
         result.push_back({start, end, static_cast<unsigned char>(80 + (it - known.begin()))});
     }
     return result;

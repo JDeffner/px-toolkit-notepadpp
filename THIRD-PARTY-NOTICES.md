@@ -25,6 +25,31 @@ license text is in `LICENSE`.
 Neil Hodgson, distributed under the Scintilla license (an MIT-style permissive
 license). Source: <https://www.scintilla.org/>.
 
+The following license is reproduced from `scintilla/License.txt` at the same Notepad++ commit:
+
+```
+License for Lexilla, Scintilla, and SciTE
+
+Copyright 1998-2021 by Neil Hodgson <neilh@scintilla.org>
+
+All Rights Reserved
+
+Permission to use, copy, modify, and distribute this software and its
+documentation for any purpose and without fee is hereby granted,
+provided that the above copyright notice appear in all copies and that
+both that copyright notice and this permission notice appear in
+supporting documentation.
+
+NEIL HODGSON DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS
+SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+AND FITNESS, IN NO EVENT SHALL NEIL HODGSON BE LIABLE FOR ANY
+SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+OR PERFORMANCE OF THIS SOFTWARE.
+```
+
 ## nlohmann/json (`third_party/nlohmann/json.hpp`)
 
 Version 3.12.0, the single-header release artifact, unmodified.
@@ -57,9 +82,7 @@ Neither is vendored into this repository. `package.cmd` fetches the pinned Windo
 
 - **`@px-lsp/server`**, GPL-3.0-or-later, from the Paradox Modding Toolkit. Its
   own `LICENSE` and `THIRD-PARTY-NOTICES.md` travel with it in `px-lsp\`.
-- **Node.js** (`node.exe`), an unmodified official nodejs.org win-x64 build,
-  under the license text in the accompanying `px-lsp\NODE-LICENSE`. Node.js is
-  Copyright Node.js contributors and others: <https://nodejs.org>.
+- **Node.js** (`node.exe`), an unmodified official nodejs.org Windows build matching the package architecture (x86, x64, or ARM64), under the license text in the accompanying `px-lsp\NODE-LICENSE`. The x64 package retains the pinned upstream runtime; x86 and ARM64 packages use the checksum-pinned archives recorded in `package.ps1` and include their matching license files. Node.js is Copyright Node.js contributors and others: <https://nodejs.org>.
 
 A plugin built from source alone carries neither: the DLL starts whichever
 `px-lsp` it finds beside itself or on PATH.
