@@ -30,10 +30,12 @@ The separate LSP updater checks stable upstream assets, verifies their digest an
 |---|---|
 | Release x64 and x86 builds and unit suites | Passed: classification, framing, markdown, lexical colors, UTF-16 positions, invalid/overlapping edit rejection, CreateFile merging, nested fold levels, semantic deltas, transport failure/recovery and options persistence, including Unicode paths. |
 | x86 and x64 Notepad++ 8.9.8 with LSP 0.3.4 | Each passed all 56 native assertions in light and dark modes, including semantic color retention during typing and undo, change-history gutter preservation, startup notification handling, outline, references, symbols, rename, quick fixes, signature help, stale completion, unsaved-buffer restoration, and custom-language settings. |
-| ARM64 | Production DLL, test executable and package cross-built on x64. DLL and bundled Node PE architecture and plugin exports checked. No local ARM64 execution. CI is configured to run the same native checks on an ARM64 Windows host. |
+| ARM64 | Production DLL and package cross-built locally, with DLL/Node PE architecture and plugin exports checked. Native ARM64 CI then passed helper/transport tests, packaged server startup, and all 56 editor assertions in both light and dark modes. |
 | Wine on Linux/macOS | Experimental and untested. No runnable Wine environment was available. Windows results do not establish Wine compatibility. |
 | Updater | Passed: current version, verified download, daily throttle, offline fallback, checksum rejection, compatible asset selection and executable architecture rejection. |
 | Screenshots | Captured from actual Notepad++ windows. The runner saves panel, rename, quick-fix, signature and options images with its assertion log. |
+
+[GitHub Actions run 34670696416](https://github.com/JDeffner/px-toolkit-notepadpp/actions/runs/34670696416) passed all three Windows jobs for source commit `4281aa4`. Each job built and packaged its architecture, then ran the native fixture in both themes. The x64 job also passed the updater suite. This was validation of an unreleased build; the release publishing job did not run.
 
 The native fixture uses CK3 and small files. This does not establish large-mod performance, complete keyboard accessibility, every split-view/Save As sequence, every third-party plugin combination, or coverage of every game feature. Diagnostics are server-reported results, not a claim that every file has been validated. New-file creation has no editor undo operation; existing-file edits have one undo step per file.
 
