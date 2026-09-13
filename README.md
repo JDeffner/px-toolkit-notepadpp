@@ -2,7 +2,7 @@
 
 Language tools for Crusader Kings III, Victoria 3 and Europa Universalis V mods, powered by [px-lsp](https://github.com/JDeffner/paradox-modding-toolkit). Completion, diagnostics, navigation, rename previews, quick fixes, folding and semantic highlighting run inside Notepad++.
 
-**Notepad++ plugin version 0.2.1** adds clearer settings, more Windows architectures and reliability fixes. Each ZIP includes **px-lsp 0.3.4** and Node. The plugin, the language server and the main PX Toolkit have separate version numbers. See the [0.2.1 release notes](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.1).
+**Notepad++ plugin 0.2.1 is on hold until the new px-lsp release is available.** The draft packages currently contain published px-lsp 0.3.4 and must be rebuilt and tested with the new server before publication. The plugin, the language server and the main PX Toolkit have separate version numbers. Version 0.2.0 remains the latest public release.
 
 ## Maintainer wanted
 
@@ -10,7 +10,7 @@ I do not use Notepad++ myself. I will look into reported issues, but [PX Toolkit
 
 ## Install
 
-The 0.2.1 packages target Windows 10 or later. Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#validation).
+The planned 0.2.1 packages target Windows 10 or later. Their download links below will become available when the release is published. For now, [download 0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0). Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#validation).
 
 | Notepad++ architecture | 0.2.1 package |
 |---|---|

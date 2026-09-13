@@ -1,5 +1,7 @@
 # Paradox Modding Toolkit for Notepad++ 0.2.1
 
+**Draft: waiting for the new px-lsp release.** The current draft assets contain px-lsp 0.3.4. Replace them, update the server version below, and rerun all architecture checks before publishing.
+
 This release updates the **Notepad++ plugin to 0.2.1** and bundles **px-lsp 0.3.4** with a Windows Node runtime. These are separate version numbers; 0.2.1 is not the version of the main PX Toolkit or its language server.
 
 ## Download
