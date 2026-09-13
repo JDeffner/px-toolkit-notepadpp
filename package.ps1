@@ -1,6 +1,9 @@
 param([ValidateSet('x86', 'x64', 'arm64')][string]$Architecture = 'x64')
 $ErrorActionPreference = 'Stop'
-$version = '0.2.1'
+$pluginVersion = '0.2.1'
+if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$pluginVersion") {
+    throw "Release tag must match Notepad++ plugin version v$pluginVersion."
+}
 $platform = @{ x86 = 'Win32'; x64 = 'x64'; arm64 = 'ARM64' }[$Architecture]
 $serverVersion = (Get-Content "$PSScriptRoot/server-version.txt" -Raw).Trim()
 $serverTag = 'v0.4.3'
@@ -8,6 +11,10 @@ $serverHash = '2f308b7de406df02aa3ed75112ce0e6ed09d616157f1c1f30e8b6443c5af422b'
 $buildRoot = Join-Path $PSScriptRoot 'build'
 & "$PSScriptRoot/build.cmd" $Architecture
 if ($LASTEXITCODE) { throw 'Build failed.' }
+$dllVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo("$buildRoot/$platform/Release/PxToolkit.dll")
+if ($dllVersion.ProductVersion -ne $pluginVersion -or $dllVersion.FileVersion -ne "$pluginVersion.0") {
+    throw 'Notepad++ plugin DLL version does not match the package version.'
+}
 $hostArchitecture = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
 if ($Architecture -ne 'arm64' -or $hostArchitecture -eq 'ARM64') {
     & "$buildRoot/$platform/Release/PxToolkitTests.exe"
@@ -76,9 +83,9 @@ if ($Architecture -ne 'arm64' -or $hostArchitecture -eq 'ARM64') {
     if ($LASTEXITCODE -ne 0 -or ($reported -join "`n").Trim() -notmatch "(^|\s)$([regex]::Escape($serverVersion))$") { throw 'Packaged server version check failed.' }
 }
 Set-Content "$stage/PxToolkit/architecture.txt" $Architecture -Encoding ASCII
-foreach ($file in @('update-server.ps1', 'server-version.txt', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+foreach ($file in @('update-server.ps1', 'server-version.txt', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
     Copy-Item -LiteralPath "$PSScriptRoot/$file" -Destination "$stage/PxToolkit"
 }
-$out = "$buildRoot/PxToolkit-$version-win-$Architecture.zip"
+$out = "$buildRoot/PxToolkit-NotepadPlusPlus-$pluginVersion-win-$Architecture.zip"
 Compress-Archive -Path "$stage/PxToolkit" -DestinationPath $out -Force
-Write-Host "Built $out (px-lsp $serverVersion)"
+Write-Host "Built $out (Notepad++ plugin $pluginVersion; bundled px-lsp $serverVersion)"

@@ -2,7 +2,7 @@
 
 Language tools for Crusader Kings III, Victoria 3 and Europa Universalis V mods, powered by [px-lsp](https://github.com/JDeffner/paradox-modding-toolkit). Completion, diagnostics, navigation, rename previews, quick fixes, folding and semantic highlighting run inside Notepad++.
 
-**Version 0.2.1 is being prepared and has not been released.** It adds clearer settings, more Windows architectures and reliability fixes. The existing 0.2.0 archive includes LSP 0.3.4 and Node, but does not contain these changes. See the [0.2.1 release notes](release-notes.md).
+**Notepad++ plugin version 0.2.1** adds clearer settings, more Windows architectures and reliability fixes. Each ZIP includes **px-lsp 0.3.4** and Node. The plugin, the language server and the main PX Toolkit have separate version numbers. See the [0.2.1 release notes](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.1).
 
 ## Maintainer wanted
 
@@ -10,15 +10,15 @@ I do not use Notepad++ myself. I will look into reported issues, but [PX Toolkit
 
 ## Install
 
-The prepared 0.2.1 packages target Windows 10 or later. Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. The existing 0.2.0 release is x64 only. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#validation).
+The 0.2.1 packages target Windows 10 or later. Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#validation).
 
 | Notepad++ architecture | 0.2.1 package |
 |---|---|
-| 32-bit x86 | `PxToolkit-0.2.1-win-x86.zip` |
-| 64-bit x64 | `PxToolkit-0.2.1-win-x64.zip` |
-| ARM64 | `PxToolkit-0.2.1-win-arm64.zip` |
+| 32-bit x86 | [PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip) |
+| 64-bit x64 | [PxToolkit-NotepadPlusPlus-0.2.1-win-x64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-x64.zip) |
+| ARM64 | [PxToolkit-NotepadPlusPlus-0.2.1-win-arm64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-arm64.zip) |
 
-1. Download the matching zip from [Releases](https://github.com/JDeffner/px-toolkit-notepadpp/releases) when available, or build it from source.
+1. Download the matching ZIP above. Use the `PxToolkit-NotepadPlusPlus` package from this repository; the main toolkit's `px-lsp` ZIP contains only the language server. GitHub's **Source code** downloads require building the plugin.
 2. Save your files and close Notepad++.
 3. Extract the whole `PxToolkit` folder into its `plugins` folder, then reopen the editor.
 
@@ -58,7 +58,7 @@ Coverage depends on the game, file type and available server data. See the serve
 
 Choose **Plugins > Paradox Modding Toolkit > Options**. **Save and apply** saves your choices and restarts the server.
 
-The folder browse buttons, friendly labels and localization dropdown below are part of unreleased 0.2.1.
+The folder browse buttons, friendly labels and localization dropdown below were added in plugin version 0.2.1.
 
 | Option | Meaning |
 |---|---|
@@ -98,7 +98,7 @@ Install Visual Studio 2022 Build Tools with the Desktop development with C++ wor
 .\test\updater-tests.ps1
 ```
 
-`build.cmd` and `package.cmd` accept `x86`, `x64` or `arm64`; the default is `x64`. For example, `package.cmd x86` creates `build/PxToolkit-0.2.1-win-x86.zip`. Packaging builds the production DLL, verifies the pinned server and runtime archives, and runs tests where the build host can execute the target. See [Contributing](CONTRIBUTING.md) for build and test details.
+`build.cmd` and `package.cmd` accept `x86`, `x64` or `arm64`; the default is `x64`. For example, `package.cmd x86` creates `build/PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip`. Packaging builds the production DLL, verifies the pinned server and runtime archives, and runs tests where the build host can execute the target. See [Contributing](CONTRIBUTING.md) for build and test details.
 
 For live editor tests, put the official `npp.8.9.8.portable.x64.zip` archive in `build`, run `package.cmd`, then run:
 

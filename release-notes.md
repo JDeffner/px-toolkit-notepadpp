@@ -1,6 +1,20 @@
-# Paradox Modding Toolkit for Notepad++ 0.2.1 (unreleased)
+# Paradox Modding Toolkit for Notepad++ 0.2.1
 
-Version 0.2.1 is being prepared. The existing 0.2.0 release does not contain these changes.
+This release updates the **Notepad++ plugin to 0.2.1** and bundles **px-lsp 0.3.4** with a Windows Node runtime. These are separate version numbers; 0.2.1 is not the version of the main PX Toolkit or its language server.
+
+## Download
+
+Choose the ZIP matching your **Notepad++ architecture**:
+
+| Notepad++ | Download |
+|---|---|
+| 64-bit x64 | [PxToolkit-NotepadPlusPlus-0.2.1-win-x64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-x64.zip) |
+| 32-bit x86 | [PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip) |
+| ARM64 | [PxToolkit-NotepadPlusPlus-0.2.1-win-arm64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-arm64.zip) |
+
+Use these complete plugin packages. The main toolkit's `px-lsp` ZIP contains only the language server, and GitHub's **Source code** downloads require building the plugin. No separate Node installation is needed.
+
+Save your files and close Notepad++, then extract the entire `PxToolkit` folder into its `plugins` folder and reopen the editor. The DLL should be at `plugins/PxToolkit/PxToolkit.dll`, with `px-lsp` beside it. Existing settings are retained.
 
 ## Settings
 
@@ -22,13 +36,13 @@ The game data folder must point to the game's `game` subfolder. Empty disables v
 
 ## Platforms and installation
 
-Prepared Windows packages cover x86, x64, and ARM64 Notepad++. Choose the package matching the editor's architecture. Each includes px-lsp 0.3.4 and a Windows Node runtime. Wine support on Linux and macOS is experimental and untested; the wiki documents its setup requirements.
+Windows packages cover x86, x64, and ARM64 Notepad++. Choose the package matching the editor's architecture. Each includes px-lsp 0.3.4 and a Windows Node runtime. Wine support on Linux and macOS is experimental and untested; the wiki documents its setup requirements.
 
 The x86 launcher uses a 1 GiB JavaScript heap limit. Applying the 4 GiB limit used by the other architectures caused 32-bit Node to fail before server initialization. Use x64 or ARM64 for large indexes.
 
 Automatic LSP updates accept only server archives matching the plugin architecture. When upstream has no matching archive, the bundled server remains available. Under Wine, managed updates require working Windows PowerShell; manual plugin packages provide the update route when it is unavailable.
 
-Save your files and close Notepad++, then extract the entire `PxToolkit` folder into its `plugins` folder and reopen the editor. Existing settings are retained. Plugin DLL updates require a plugin package; LSP updates alone do not install these fixes. A GitHub release does not add the plugin to Plugins Admin.
+Plugin DLL updates require a plugin package; LSP updates alone do not install these fixes. A GitHub release does not add the plugin to Plugins Admin.
 
 ## Documentation and maintenance
 

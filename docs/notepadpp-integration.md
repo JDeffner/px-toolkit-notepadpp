@@ -1,6 +1,6 @@
 # Notepad++ integration decisions and validation
 
-Researched and tested on 2026-09-10 through 2026-09-12. The current checks cover the prepared, unreleased 0.2.1 changes. The implementation uses native dialogs and the existing C++ client. No browser view or additional UI framework is required.
+Researched and tested on 2026-09-10 through 2026-09-12. The checks below cover the Notepad++ plugin 0.2.1 changes. The implementation uses native dialogs and the existing C++ client. No browser view or additional UI framework is required.
 
 ## Host integration
 
@@ -49,7 +49,7 @@ Each Windows package includes a matching Windows Node runtime. Server updates us
 
 The first x86 native run exposed a startup failure caused by applying the 4 GiB Node heap ceiling to a 32-bit process. x86 now uses 1 GiB, while x64/ARM64 retain 4 GiB. The corrected x86 runs passed in both themes. Use a 64-bit editor for large vanilla or mod indexes.
 
-## LSP reliability fixes (unreleased, 2026-09-11)
+## LSP reliability fixes in plugin 0.2.1
 
 Folding now uses Notepad++'s folding margin (3), leaving its change-history margin (2) intact. Previously, replacing the change-history mask with fold markers caused an unsaved-change marker to color the entire line orange. The native regression checks that fold controls occupy one margin and that edited lines retain their change markers in the gutter.
 

@@ -63,8 +63,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PxToolkit-${{ matrix.architecture }}
-          path: build/PxToolkit-*-win-${{ matrix.architecture }}.zip
+          name: PxToolkit-NotepadPlusPlus-${{ matrix.architecture }}
+          path: build/PxToolkit-NotepadPlusPlus-*-win-${{ matrix.architecture }}.zip
           if-no-files-found: error
 
   release:
@@ -77,10 +77,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: PxToolkit-*
+          pattern: PxToolkit-NotepadPlusPlus-*
           path: release-assets
           merge-multiple: true
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release-assets/*.zip --verify-tag --title "Paradox Modding Toolkit $GITHUB_REF_NAME" --notes-file release-notes.md
+        run: gh release create "$GITHUB_REF_NAME" release-assets/PxToolkit-NotepadPlusPlus-*.zip --verify-tag --title "Paradox Modding Toolkit for Notepad++ $GITHUB_REF_NAME" --notes-file release-notes.md

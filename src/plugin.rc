@@ -14,7 +14,7 @@ BEGIN
         BEGIN
             VALUE "FileDescription", "Paradox Modding Toolkit for Notepad++"
             VALUE "FileVersion", "0.2.1.0"
-            VALUE "ProductName", "Paradox Modding Toolkit"
+            VALUE "ProductName", "Paradox Modding Toolkit for Notepad++"
             VALUE "ProductVersion", "0.2.1"
             VALUE "LegalCopyright", "Copyright 2026 Joel Deffner"
             VALUE "OriginalFilename", "PxToolkit.dll"
