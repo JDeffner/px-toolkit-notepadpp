@@ -8,6 +8,14 @@ Language tools for Crusader Kings III, Victoria 3 and Europa Universalis V mods,
 
 I do not use Notepad++ myself. I will look into reported issues, but [PX Toolkit for VS Code](https://github.com/JDeffner/paradox-modding-toolkit) has priority. Anyone interested is welcome to take over maintenance of this plugin. [Open an issue](https://github.com/JDeffner/px-toolkit-notepadpp/issues) to report a problem or discuss the handover.
 
+## Screenshots
+
+Preview a symbol rename across its definition and event reference before applying the changes.
+
+![Notepad++ showing a scripted effect and a rename preview with before and after values in two files](docs/screenshots/rename-preview.png)
+
+[View all five screenshots](docs/screenshots/README.md) for the outline, references, rename preview, localization quick fix and options. Captured in Notepad++ 8.9.8 dark mode with the unreleased plugin 0.2.1 build and px-lsp 0.3.4, using a small CK3 test mod.
+
 ## Install
 
 The planned 0.2.1 packages target Windows 10 or later. Their download links below will become available when the release is published. For now, [download 0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0). Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#validation).
