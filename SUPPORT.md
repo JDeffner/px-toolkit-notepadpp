@@ -8,4 +8,4 @@ For a bug, include the plugin and server versions, Notepad++ version and archite
 
 This repository handles the Notepad++ plugin. If the same language-server behavior occurs in PX Toolkit for VS Code, the [upstream tracker](https://github.com/JDeffner/paradox-modding-toolkit/issues) may be the better place to report it. If you are unsure, explain what you tested here.
 
-Joel does not use Notepad++ himself. He will look into reported issues, but PX Toolkit for VS Code has priority. There is no guaranteed response time. Anyone interested in taking over maintenance can open an issue to discuss the handover.
+This Notepad++ plugin receives limited maintenance. The maintainer focuses on PX Toolkit for VS Code and does not plan regular feature development here. Reported issues may be fixed when time permits, but there is no guaranteed response or release date. Anyone interested in taking over maintenance can open an issue to discuss the handover.

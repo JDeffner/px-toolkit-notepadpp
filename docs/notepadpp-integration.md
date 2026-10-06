@@ -1,5 +1,26 @@
 # Notepad++ integration decisions and validation
 
+## Release candidate 0.2.2 with LSP 0.3.8
+
+Prepared on 2026-10-06 with the published `px-lsp-win-x64-0.3.8.zip` from the PX Toolkit `v0.5.5` prerelease. The archive matches SHA-256 `8f01ffbee94c43bbf0b2590d5c99e318abf3600c44c988d73c7b76394c6faa15`. Plugin 0.2.2 includes the earlier unreleased 0.2.1 changes without moving its existing tag.
+
+The first run against the new LSP failed four localization assertions: no code action, preview, enabled Apply button or created file. The plugin already implemented versioned edits and file creation but did not advertise them. Declaring `workspace.workspaceEdit.documentChanges` and the `create` resource operation restored the feature. A new native assertion also checks that cross-file rename preserves unrelated unsaved text without saving it.
+
+| Current check | Result |
+|---|---|
+| Windows x64 production build, helper and transport tests | Passed. DLL version 0.2.2.0; bundled server reports 0.3.8. |
+| Windows x86 production build, helper and transport tests | Passed. Matching x86 Node runtime and DLL verified; bundled server reports 0.3.8. |
+| x64 and x86 Notepad++ 8.9.8, light and dark | Each passed 57 native assertions with LSP 0.3.8. Tests use synthetic CK3 files, not a full game index. |
+| Managed bundled launcher | Passed in an isolated local cache with no custom server override. |
+| Updater | Passed, including refusal to downgrade bundled 0.3.8 to stable 0.3.6, prerelease rejection, verified updates, daily throttle, offline fallback, checksum rejection and architecture checks. |
+| Documentation screenshots | Refreshed from the passing x64 dark run. Scintilla and native edit carets are hidden during capture; images were visually checked. |
+| ARM64 | Pending. This x64 machine does not have `Microsoft.VisualStudio.Component.VC.Tools.ARM64` or an ARM64 execution host. The build workflow must pass native ARM64 packaging and both editor themes for the new source before publication. Older 0.3.4 results below do not satisfy this check. |
+| Wine, large mods and full Victoria 3/EU5 workflows | Not tested in this preparation. |
+
+The release candidate is not cleared for publication until ARM64 passes. See [the release procedure](RELEASING.md). No tag, draft release, or public asset was changed during local preparation.
+
+## Earlier 0.2.1 validation
+
 Researched and tested on 2026-09-10 through 2026-09-12. The checks below cover the Notepad++ plugin 0.2.1 changes. The implementation uses native dialogs and the existing C++ client. No browser view or additional UI framework is required.
 
 ## Host integration

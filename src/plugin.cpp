@@ -464,13 +464,15 @@ void startServer(const std::wstring& modPath) {
         {"processId", static_cast<int>(::GetCurrentProcessId())},
         {"rootUri", modPath.empty() ? Json(nullptr) : Json(pathToUri(modPath))},
         {"capabilities",
-         {{"textDocument",
+         {{"workspace", {{"workspaceEdit", {{"documentChanges", true}, {"resourceOperations", Json::array({"create"})}}}}},
+          {"textDocument",
            {{"synchronization", {{"didSave", true}}},
             // No snippetSupport: Scintilla has no tabstops, so the server sends
             // plain-text inserts and never a literal "${".
             {"completion", {{"completionItem", {{"snippetSupport", false}}}}},
             {"hover", {{"contentFormat", Json::array({"markdown", "plaintext"})}}},
             {"documentSymbol", {{"hierarchicalDocumentSymbolSupport", true}}},
+            {"codeAction", {{"codeActionLiteralSupport", {{"codeActionKind", {{"valueSet", Json::array({"quickfix"})}}}}}}},
             {"foldingRange", {{"lineFoldingOnly", true}}},
             {"semanticTokens", {{"requests", {{"full", true}}}, {"tokenTypes", Json::array({"method", "function", "variable", "property", "macro", "event", "enumMember", "string"})}, {"tokenModifiers", Json::array({"defaultLibrary"})}, {"formats", Json::array({"relative"})}}},
             {"publishDiagnostics", Json::object()}}}}},

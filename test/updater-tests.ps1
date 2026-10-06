@@ -7,14 +7,16 @@ $global:PxUpdaterTest_requests = 0
 $global:PxUpdaterTest_offline = $false
 $global:PxUpdaterTest_badHash = $false
 $global:PxUpdaterTest_assetArchitecture = 'x64'
+$global:PxUpdaterTest_releaseVersion = $version
+$global:PxUpdaterTest_prerelease = $false
 function Invoke-RestMethod {
     $global:PxUpdaterTest_requests++
     if ($global:PxUpdaterTest_offline) { throw 'Offline test' }
     $hash = (Get-FileHash $global:PxUpdaterTest_fixtureArchive -Algorithm SHA256).Hash
     if ($global:PxUpdaterTest_badHash) { $hash = '0' * 64 }
-    return @{ draft = $false; prerelease = $false; assets = @(@{
-        name = "px-lsp-win-$global:PxUpdaterTest_assetArchitecture-$version.zip"
-        browser_download_url = "https://github.com/JDeffner/paradox-modding-toolkit/releases/download/vtest/px-lsp-win-$global:PxUpdaterTest_assetArchitecture-$version.zip"
+    return @{ draft = $false; prerelease = $global:PxUpdaterTest_prerelease; assets = @(@{
+        name = "px-lsp-win-$global:PxUpdaterTest_assetArchitecture-$global:PxUpdaterTest_releaseVersion.zip"
+        browser_download_url = "https://github.com/JDeffner/paradox-modding-toolkit/releases/download/vtest/px-lsp-win-$global:PxUpdaterTest_assetArchitecture-$global:PxUpdaterTest_releaseVersion.zip"
         digest = "sha256:$hash"
     }) }
 }
@@ -24,6 +26,16 @@ try {
     & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion $version -Force
     Assert (!(Test-Path "$cache/current.txt")) 'Same version must not download.'
     Assert ((Get-Content "$cache/status.txt" -Raw) -match 'up to date') 'Manual check needs a current-version status.'
+    $global:PxUpdaterTest_releaseVersion = '0.3.6'
+    & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion $version -Force
+    Assert (!(Test-Path "$cache/current.txt")) 'An older stable server must not replace the bundled server.'
+    Assert ((Get-Content "$cache/status.txt" -Raw) -match 'up to date') 'An older stable release must keep the bundled server current.'
+    $global:PxUpdaterTest_releaseVersion = $version
+    $global:PxUpdaterTest_prerelease = $true
+    & "$repo/update-server.ps1" -CacheRoot "$cache/prerelease" -BundledVersion '0.0.0' -Force
+    Assert (!(Test-Path "$cache/prerelease/current.txt")) 'Automatic updates must not activate a prerelease.'
+    Assert ((Get-Content "$cache/prerelease/update.log" -Raw) -match 'stable Windows server asset') 'Prerelease rejection must be reported.'
+    $global:PxUpdaterTest_prerelease = $false
     & "$repo/update-server.ps1" -CacheRoot $cache -BundledVersion '0.0.0' -Force
     if (!(Test-Path "$cache/current.txt")) { throw (Get-Content "$cache/update.log" -Raw) }
     Assert ((Get-Content "$cache/current.txt" -Raw).Trim() -eq $version) 'Update did not activate.'
@@ -62,7 +74,7 @@ try {
     & "$repo/update-server.ps1" -Architecture x86 -CacheRoot "$cache/wrong-machine" -BundledVersion '0.0.0' -Force
     Assert (!(Test-Path "$cache/wrong-machine/current.txt")) 'Wrong executable architecture activated.'
     Assert ((Get-Content "$cache/wrong-machine/status.txt" -Raw) -match 'architecture does not match') 'Executable architecture was not checked.'
-    Write-Host 'Updater tests passed: current version, verified update, daily throttle, offline fallback, checksum rejection, compatible asset selection, executable architecture rejection.'
+    Write-Host 'Updater tests passed: current version, no downgrade, prerelease rejection, verified update, daily throttle, offline fallback, checksum rejection, compatible asset selection, executable architecture rejection.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($cache)
     $root = [IO.Path]::GetFullPath("$repo/build").TrimEnd('\') + '\'

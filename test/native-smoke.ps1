@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Force -Path "$run/npp/plugins/PxToolkit", "$run/np
 Copy-Item -Path "$package/*" -Destination "$run/npp/plugins/PxToolkit" -Recurse
 Copy-Item -LiteralPath "$smokeOutput/PxToolkit.dll" -Destination "$run/npp/plugins/PxToolkit/PxToolkit.dll" -Force
 Copy-Item -LiteralPath "$repo/update-server.ps1" -Destination "$run/npp/plugins/PxToolkit/update-server.ps1" -Force
-Set-Content "$run/npp/plugins/Config/px-toolkit.ini" "[px-toolkit]`r`ngameId=ck3`r`nautoUpdateServer=0`r`nserverCommand=$run\npp\plugins\PxToolkit\px-lsp\px-lsp.cmd" -Encoding ASCII
+Set-Content "$run/npp/plugins/Config/px-toolkit.ini" "[px-toolkit]`r`ngameId=ck3`r`nautoUpdateServer=0" -Encoding ASCII
 Set-Content "$run/mod/descriptor.mod" 'name="PX native smoke fixture"' -Encoding ASCII
 Set-Content "$run/mod/common/game_concepts/px_smoke_concepts.txt" 'px_smoke_concept = { }' -Encoding ASCII
 @'
@@ -43,9 +43,22 @@ px_smoke.1 = {
 }
 '@ | Set-Content "$run/mod/events/px_smoke_events.txt" -Encoding ASCII
 $darkMode = if ($Dark) { 'yes' } else { 'no' }
-Set-Content "$run/npp/config.xml" "<NotepadPlus><GUIConfigs><GUIConfig name=`"DarkMode`" enable=`"$darkMode`" colorTone=`"0`" /><GUIConfig name=`"ScintillaPrimaryView`" isChangeHistoryEnabled=`"1`" /></GUIConfigs></NotepadPlus>" -Encoding UTF8
+@"
+<NotepadPlus><GUIConfigs>
+  <GUIConfig name="DarkMode" enable="$darkMode" colorTone="0" />
+  <GUIConfig name="ScintillaPrimaryView" isChangeHistoryEnabled="1" />
+  <GUIConfig name="AppPosition" x="30" y="30" width="1500" height="1000" isMaximized="no" />
+  <GUIConfig name="DockingManager" leftWidth="200" rightWidth="200" topHeight="200" bottomHeight="360" />
+</GUIConfigs></NotepadPlus>
+"@ | Set-Content "$run/npp/config.xml" -Encoding UTF8
 $env:PX_SMOKE_ROOT = $run
-$process = Start-Process -FilePath "$run/npp/notepad++.exe" -WorkingDirectory "$run/npp" -ArgumentList "-multiInst -nosession $run\mod\common\scripted_effects\px_smoke_effects.txt" -WindowStyle Hidden -PassThru
+# Exercise the packaged launcher without reading or changing the user's server cache.
+$previousLocalAppData = $env:LOCALAPPDATA
+try {
+    $env:LOCALAPPDATA = "$run/local-app-data"
+    New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+    $process = Start-Process -FilePath "$run/npp/notepad++.exe" -WorkingDirectory "$run/npp" -ArgumentList "-multiInst -nosession $run\mod\common\scripted_effects\px_smoke_effects.txt" -WindowStyle Hidden -PassThru
+} finally { $env:LOCALAPPDATA = $previousLocalAppData }
 Write-Output "Smoke process: $($process.Id). Results: $run"
 Set-Content "$repo/build/last-native-smoke.txt" $run -Encoding ASCII
 $deadline = (Get-Date).AddSeconds(90)

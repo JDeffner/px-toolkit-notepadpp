@@ -1,13 +1,13 @@
 param([ValidateSet('x86', 'x64', 'arm64')][string]$Architecture = 'x64')
 $ErrorActionPreference = 'Stop'
-$pluginVersion = '0.2.1'
+$pluginVersion = '0.2.2'
 if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$pluginVersion") {
     throw "Release tag must match Notepad++ plugin version v$pluginVersion."
 }
 $platform = @{ x86 = 'Win32'; x64 = 'x64'; arm64 = 'ARM64' }[$Architecture]
 $serverVersion = (Get-Content "$PSScriptRoot/server-version.txt" -Raw).Trim()
-$serverTag = 'v0.4.3'
-$serverHash = '2f308b7de406df02aa3ed75112ce0e6ed09d616157f1c1f30e8b6443c5af422b'
+$serverTag = 'v0.5.5'
+$serverHash = '8f01ffbee94c43bbf0b2590d5c99e318abf3600c44c988d73c7b76394c6faa15'
 $buildRoot = Join-Path $PSScriptRoot 'build'
 & "$PSScriptRoot/build.cmd" $Architecture
 if ($LASTEXITCODE) { throw 'Build failed.' }
@@ -83,9 +83,12 @@ if ($Architecture -ne 'arm64' -or $hostArchitecture -eq 'ARM64') {
     if ($LASTEXITCODE -ne 0 -or ($reported -join "`n").Trim() -notmatch "(^|\s)$([regex]::Escape($serverVersion))$") { throw 'Packaged server version check failed.' }
 }
 Set-Content "$stage/PxToolkit/architecture.txt" $Architecture -Encoding ASCII
-foreach ($file in @('update-server.ps1', 'server-version.txt', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+foreach ($file in @('update-server.ps1', 'server-version.txt', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'CONTRIBUTING.md', 'SUPPORT.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md', 'CHANGELOG.md')) {
     Copy-Item -LiteralPath "$PSScriptRoot/$file" -Destination "$stage/PxToolkit"
 }
+Copy-Item -LiteralPath "$PSScriptRoot/docs" -Destination "$stage/PxToolkit/docs" -Recurse
+New-Item -ItemType Directory -Path "$stage/PxToolkit/assets/branding" -Force | Out-Null
+Copy-Item -LiteralPath "$PSScriptRoot/assets/branding/icon-256.png" -Destination "$stage/PxToolkit/assets/branding"
 $out = "$buildRoot/PxToolkit-NotepadPlusPlus-$pluginVersion-win-$Architecture.zip"
 Compress-Archive -Path "$stage/PxToolkit" -DestinationPath $out -Force
 Write-Host "Built $out (Notepad++ plugin $pluginVersion; bundled px-lsp $serverVersion)"

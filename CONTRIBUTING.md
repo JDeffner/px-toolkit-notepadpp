@@ -1,6 +1,6 @@
 # Contributing
 
-Bug reports, fixes, tests, and documentation are welcome. Joel will look into reported issues, but PX Toolkit for VS Code has priority. He does not use Notepad++ himself, and this plugin is open to a new maintainer. Open an issue to discuss a handover or a substantial change before starting work. Review and release dates are not guaranteed.
+Bug reports, fixes, tests, and documentation are welcome. This Notepad++ plugin receives limited maintenance. The maintainer focuses on PX Toolkit for VS Code and does not plan regular feature development here. Fixes may be reviewed when time permits; review and release dates are not guaranteed. A new maintainer is welcome. Open an issue to discuss a handover or a substantial change before starting work.
 
 Follow the [code of conduct](CODE_OF_CONDUCT.md). Use [Support](SUPPORT.md) for questions and [Security](SECURITY.md) for private vulnerability reports.
 
@@ -16,7 +16,7 @@ cd px-toolkit-notepadpp
 .\test\updater-tests.ps1
 ```
 
-`build.cmd` and `package.cmd` accept `x86`, `x64`, or `arm64`; the default is `x64`. Packaging builds the production DLL, verifies the pinned server and Node archives, checks the DLL and runtime architecture, and creates `build/PxToolkit-NotepadPlusPlus-0.2.1-win-<arch>.zip`. The package version must match the DLL version and, in a tagged CI build, the release tag. This is the Notepad++ plugin version; `server-version.txt` records the separate bundled px-lsp version. Packaging runs the helper and transport tests and the bundled server's version command when the host can execute the target. ARM64 cross-builds on x64 skip those executable checks; run them on ARM64 before claiming runtime validation.
+`build.cmd` and `package.cmd` accept `x86`, `x64`, or `arm64`; the default is `x64`. Packaging builds the production DLL, verifies the pinned server and Node archives, checks the DLL and runtime architecture, and creates `build/PxToolkit-NotepadPlusPlus-0.2.2-win-<arch>.zip`. The package version must match the DLL version and, in a tagged CI build, the release tag. This is the Notepad++ plugin version; `server-version.txt` records the separate bundled px-lsp version. Packaging runs the helper and transport tests and the bundled server's version command when the host can execute the target. ARM64 cross-builds on x64 skip those executable checks; run them on ARM64 before claiming runtime validation.
 
 | Argument | MSBuild platform and production directory | Bundled runtime |
 |---|---|---|
@@ -24,7 +24,7 @@ cd px-toolkit-notepadpp
 | `x64` | `x64`, `build/x64/Release` | Windows x64 Node 24.18.1 |
 | `arm64` | `ARM64`, `build/ARM64/Release` | Windows ARM64 Node 22.23.2 |
 
-All packages use the same px-lsp 0.3.4 JavaScript and data. The first package run downloads the required archives. A separate Node installation is not needed. Run architecture package commands one at a time because they share the extracted upstream server directory.
+All packages use the same px-lsp 0.3.8 JavaScript and data from the PX Toolkit 0.5.5 prerelease. The first package run downloads the required archives. A separate Node installation is not needed. Run architecture package commands one at a time because they share the extracted upstream server directory.
 
 ## Test editor changes
 

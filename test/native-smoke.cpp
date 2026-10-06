@@ -29,6 +29,14 @@ BOOL CALLBACK findPanel(HWND hwnd, LPARAM) {
 }
 int rowCount() { EnumChildWindows(g_npp._nppHandle, findPanel, 0); return smokePanel ? static_cast<int>(SendDlgItemMessage(smokePanel, IDC_RESULTS, LVM_GETITEMCOUNT, 0, 0)) : -1; }
 void capture(HWND hwnd, const wchar_t* name) {
+    const HWND views[] = {g_npp._scintillaMainHandle, g_npp._scintillaSecondHandle};
+    LRESULT caretStyles[2]{};
+    for (int i = 0; i < 2; ++i) {
+        caretStyles[i] = SendMessage(views[i], SCI_GETCARETSTYLE, 0, 0);
+        SendMessage(views[i], SCI_SETCARETSTYLE, CARETSTYLE_INVISIBLE, 0);
+    }
+    const HWND focused = GetFocus();
+    const BOOL hiddenCaret = HideCaret(focused);
     RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
     Gdiplus::GdiplusStartupInput input; ULONG_PTR token; Gdiplus::GdiplusStartup(&token, &input, nullptr);
     RECT rect; GetWindowRect(hwnd, &rect); HDC dc = GetDC(hwnd), memory = CreateCompatibleDC(dc);
@@ -36,6 +44,8 @@ void capture(HWND hwnd, const wchar_t* name) {
     auto old = SelectObject(memory, bitmap); PrintWindow(hwnd, memory, 2); SelectObject(memory, old);
     { Gdiplus::Bitmap image(bitmap, nullptr); CLSID png{0x557cf406,0x1a04,0x11d3,{0x9a,0x73,0x00,0x00,0xf8,0x1e,0xf3,0x2e}}; image.Save((smokeRoot + L"\\" + name).c_str(), &png, nullptr); }
     DeleteObject(bitmap); DeleteDC(memory); ReleaseDC(hwnd, dc); Gdiplus::GdiplusShutdown(token);
+    if (hiddenCaret) ShowCaret(focused);
+    for (int i = 0; i < 2; ++i) SendMessage(views[i], SCI_SETCARETSTYLE, caretStyles[i], 0);
 }
 void openFixture(const wchar_t* relative) { const auto path = smokeRoot + L"\\mod\\" + relative; SendMessage(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(path.c_str())); }
 void caretAt(const std::string& word, int delta = 0) { const auto at = bufferText().find(word); smokeCheck(at != std::string::npos, ("fixture contains " + word).c_str()); sci(SCI_GOTOPOS, at + delta); }
@@ -90,6 +100,12 @@ void CALLBACK smokeTick(HWND hwnd, UINT, UINT_PTR timer, DWORD) {
             requestSymbols(L"px_smoke"); next(); break;
         case 4:
             smokeCheck(rowCount() >= 1, "workspace symbol search returns fixture symbols");
+            {
+                const std::string unsaved = "\n# Unsaved text must survive rename.\n";
+                sci(SCI_APPENDTEXT, unsaved.size(), reinterpret_cast<LPARAM>(unsaved.c_str()));
+                flushChange(currentPath());
+                smokeOriginal = bufferText();
+            }
             caretAt("px_smoke_effect", 4);
             requestRename(L"px_smoke_renamed"); next(2000); break;
         case 5:
@@ -99,6 +115,7 @@ void CALLBACK smokeTick(HWND hwnd, UINT, UINT_PTR timer, DWORD) {
             applyPreview(); next(); break;
         case 6:
             smokeCheck(bufferText().find("px_smoke_renamed") != std::string::npos, "rename applies to active buffer");
+            smokeCheck(bufferText().find("# Unsaved text must survive rename.") != std::string::npos && sci(SCI_GETMODIFY), "rename preserves unrelated unsaved text without saving the buffer");
             sci(SCI_UNDO);
             smokeCheck(bufferText() == smokeOriginal, "one undo restores original declaration");
             openFixture(L"events\\px_smoke_events.txt");

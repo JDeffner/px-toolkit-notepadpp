@@ -1,12 +1,14 @@
+<img src="assets/branding/icon-256.png" alt="PX NPP" width="96" height="96" align="right">
+
 # Paradox Modding Toolkit for Notepad++
 
 Language tools for Crusader Kings III, Victoria 3 and Europa Universalis V mods, powered by [px-lsp](https://github.com/JDeffner/paradox-modding-toolkit). Completion, diagnostics, navigation, rename previews, quick fixes, folding and semantic highlighting run inside Notepad++.
 
-**Notepad++ plugin 0.2.1 is on hold until the new px-lsp release is available.** The draft packages currently contain published px-lsp 0.3.4 and must be rebuilt and tested with the new server before publication. The plugin, the language server and the main PX Toolkit have separate version numbers. Version 0.2.0 remains the latest public release.
+**Release candidate: Notepad++ plugin 0.2.2 with px-lsp 0.3.8.** The bundled server comes from the [PX Toolkit 0.5.5 prerelease](https://github.com/JDeffner/paradox-modding-toolkit/releases/tag/v0.5.5). The plugin, language server and main toolkit have separate version numbers. Until 0.2.2 is published, [0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0) remains the available release. See the [release checks](docs/RELEASING.md).
 
-## Maintainer wanted
+## Limited maintenance
 
-I do not use Notepad++ myself. I will look into reported issues, but [PX Toolkit for VS Code](https://github.com/JDeffner/paradox-modding-toolkit) has priority. Anyone interested is welcome to take over maintenance of this plugin. [Open an issue](https://github.com/JDeffner/px-toolkit-notepadpp/issues) to report a problem or discuss the handover.
+I do not plan to develop this Notepad++ version much further. My main focus is [PX Toolkit for VS Code](https://github.com/JDeffner/paradox-modding-toolkit), and I do not use Notepad++ myself. I may fix reported issues when time permits, but regular feature updates and response times are not guaranteed. Community contributions and a new maintainer are welcome. [Open an issue](https://github.com/JDeffner/px-toolkit-notepadpp/issues) to report a problem or discuss taking over maintenance.
 
 ## Screenshots
 
@@ -14,19 +16,19 @@ Preview a symbol rename across its definition and event reference before applyin
 
 ![Notepad++ showing a scripted effect and a rename preview with before and after values in two files](docs/screenshots/rename-preview.png)
 
-[View all five screenshots](docs/screenshots/README.md) for the outline, references, rename preview, localization quick fix and options. Captured in Notepad++ 8.9.8 dark mode with the unreleased plugin 0.2.1 build and px-lsp 0.3.4, using a small CK3 test mod.
+[View all five screenshots](docs/screenshots/README.md) for the outline, references, rename preview, localization quick fix and options. Captured in Notepad++ 8.9.8 dark mode with the plugin 0.2.2 candidate and px-lsp 0.3.8, using a small CK3 test mod.
 
 ## Install
 
-The planned 0.2.1 packages target Windows 10 or later. Their download links below will become available when the release is published. For now, [download 0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0). Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#validation).
+The planned 0.2.2 packages target Windows 10 or later. Their download links below will become available when the release is published. For now, [download 0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0). Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#release-candidate-022-with-lsp-038).
 
-| Notepad++ architecture | 0.2.1 package |
+| Notepad++ architecture | 0.2.2 package |
 |---|---|
-| 32-bit x86 | [PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip) |
-| 64-bit x64 | [PxToolkit-NotepadPlusPlus-0.2.1-win-x64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-x64.zip) |
-| ARM64 | [PxToolkit-NotepadPlusPlus-0.2.1-win-arm64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.1/PxToolkit-NotepadPlusPlus-0.2.1-win-arm64.zip) |
+| 32-bit x86 | [PxToolkit-NotepadPlusPlus-0.2.2-win-x86.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.2/PxToolkit-NotepadPlusPlus-0.2.2-win-x86.zip) |
+| 64-bit x64 | [PxToolkit-NotepadPlusPlus-0.2.2-win-x64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.2/PxToolkit-NotepadPlusPlus-0.2.2-win-x64.zip) |
+| ARM64 | [PxToolkit-NotepadPlusPlus-0.2.2-win-arm64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.2/PxToolkit-NotepadPlusPlus-0.2.2-win-arm64.zip) |
 
-1. Download the matching ZIP above. Use the `PxToolkit-NotepadPlusPlus` package from this repository; the main toolkit's `px-lsp` ZIP contains only the language server. GitHub's **Source code** downloads require building the plugin.
+1. For the current release, use the 0.2.0 download linked above. After 0.2.2 is published, download the matching ZIP from the table. Use the `PxToolkit-NotepadPlusPlus` package from this repository; the main toolkit's `px-lsp` ZIP contains only the language server. GitHub's **Source code** downloads require building the plugin.
 2. Save your files and close Notepad++.
 3. Extract the whole `PxToolkit` folder into its `plugins` folder, then reopen the editor.
 
@@ -39,6 +41,8 @@ Wine on Linux or macOS uses the matching Windows package inside the same prefix 
 ## Editor tools
 
 Open **Plugins > Paradox Modding Toolkit > Problems and outline** to show the docked panel. Drag its title to move it. Double-click a result, or select it and press Enter, to open its location.
+
+If the result list is too short, drag the panel's upper divider upward, especially when Windows display scaling is enabled.
 
 | Tool | How to use it |
 |---|---|
@@ -66,7 +70,7 @@ Coverage depends on the game, file type and available server data. See the serve
 
 Choose **Plugins > Paradox Modding Toolkit > Options**. **Save and apply** saves your choices and restarts the server.
 
-The folder browse buttons, friendly labels and localization dropdown below were added in plugin version 0.2.1.
+The folder browse buttons, friendly labels and localization dropdown below were introduced in the unreleased 0.2.1 build and are included in 0.2.2.
 
 | Option | Meaning |
 |---|---|
@@ -85,7 +89,7 @@ The folder browse buttons, friendly labels and localization dropdown below were 
 
 ## Updates
 
-**The LSP updates automatically by default. The plugin DLL does not.**
+**The LSP updates automatically by default. The plugin DLL does not.** This package deliberately bundles LSP 0.3.8 from the toolkit prerelease. Automatic checks use stable upstream releases only and never replace it with an older server.
 
 At the first managed server start in each Notepad++ session, the plugin starts a background check, at most once per 24 hours. **Check server updates** bypasses that interval. Downloads go into `%LOCALAPPDATA%\PxToolkit\servers\<arch>`, where `<arch>` is `x86`, `x64` or `arm64`, without administrator access.
 
@@ -106,7 +110,7 @@ Install Visual Studio 2022 Build Tools with the Desktop development with C++ wor
 .\test\updater-tests.ps1
 ```
 
-`build.cmd` and `package.cmd` accept `x86`, `x64` or `arm64`; the default is `x64`. For example, `package.cmd x86` creates `build/PxToolkit-NotepadPlusPlus-0.2.1-win-x86.zip`. Packaging builds the production DLL, verifies the pinned server and runtime archives, and runs tests where the build host can execute the target. See [Contributing](CONTRIBUTING.md) for build and test details.
+`build.cmd` and `package.cmd` accept `x86`, `x64` or `arm64`; the default is `x64`. For example, `package.cmd x86` creates `build/PxToolkit-NotepadPlusPlus-0.2.2-win-x86.zip`. Packaging builds the production DLL, verifies the pinned server and runtime archives, and runs tests where the build host can execute the target. See [Contributing](CONTRIBUTING.md) for build and test details.
 
 For live editor tests, put the official `npp.8.9.8.portable.x64.zip` archive in `build`, run `package.cmd`, then run:
 
