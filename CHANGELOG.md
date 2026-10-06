@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.2 (unreleased)
+## 0.2.2 (2026-10-06)
 
 - Bundle px-lsp 0.3.8 from PX Toolkit 0.5.5, with the release archive verified by SHA-256. Automatic server updates still accept newer stable releases only.
 - Declare versioned workspace edits and file creation so the new LSP can offer localization fixes and rename symbols in unsaved buffers.

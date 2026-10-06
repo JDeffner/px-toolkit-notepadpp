@@ -1,6 +1,6 @@
 # Notepad++ integration decisions and validation
 
-## Release candidate 0.2.2 with LSP 0.3.8
+## Release 0.2.2 with LSP 0.3.8
 
 Prepared on 2026-10-06 with the published `px-lsp-win-x64-0.3.8.zip` from the PX Toolkit `v0.5.5` prerelease. The archive matches SHA-256 `8f01ffbee94c43bbf0b2590d5c99e318abf3600c44c988d73c7b76394c6faa15`. Plugin 0.2.2 includes the earlier unreleased 0.2.1 changes without moving its existing tag.
 
@@ -10,14 +10,14 @@ The first run against the new LSP failed four localization assertions: no code a
 |---|---|
 | Windows x64 production build, helper and transport tests | Passed. DLL version 0.2.2.0; bundled server reports 0.3.8. |
 | Windows x86 production build, helper and transport tests | Passed. Matching x86 Node runtime and DLL verified; bundled server reports 0.3.8. |
-| x64 and x86 Notepad++ 8.9.8, light and dark | Each passed 57 native assertions with LSP 0.3.8. Tests use synthetic CK3 files, not a full game index. |
+| x64, x86 and ARM64 Notepad++ 8.9.8, light and dark | Each passed 57 native assertions with LSP 0.3.8. Tests use synthetic CK3 files, not a full game index. |
 | Managed bundled launcher | Passed in an isolated local cache with no custom server override. |
 | Updater | Passed, including refusal to downgrade bundled 0.3.8 to stable 0.3.6, prerelease rejection, verified updates, daily throttle, offline fallback, checksum rejection and architecture checks. |
 | Documentation screenshots | Refreshed from the passing x64 dark run. Scintilla and native edit carets are hidden during capture; images were visually checked. |
-| ARM64 | Pending. This x64 machine does not have `Microsoft.VisualStudio.Component.VC.Tools.ARM64` or an ARM64 execution host. The build workflow must pass native ARM64 packaging and both editor themes for the new source before publication. Older 0.3.4 results below do not satisfy this check. |
+| ARM64 | Passed on native Windows ARM64 in CI: production build, helper and transport tests, packaging, and 57 editor assertions in each theme. |
 | Wine, large mods and full Victoria 3/EU5 workflows | Not tested in this preparation. |
 
-The release candidate is not cleared for publication until ARM64 passes. See [the release procedure](RELEASING.md). No tag, draft release, or public asset was changed during local preparation.
+[GitHub Actions run 37401363516](https://github.com/JDeffner/px-toolkit-notepadpp/actions/runs/37401363516) passed all three architectures for source commit `c3b6195`. All six native editor runs passed 57 assertions with zero failures. The x64 updater suite also passed. The final documentation update does not change runtime code. The release tag workflow repeats these checks before publishing. See [the release procedure](RELEASING.md).
 
 ## Earlier 0.2.1 validation
 

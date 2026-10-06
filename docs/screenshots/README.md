@@ -1,6 +1,6 @@
 # Editor screenshots
 
-These captures show the Paradox Modding Toolkit plugin 0.2.2 candidate with px-lsp 0.3.8 in Notepad++ 8.9.8 (Windows x64, dark mode). The scripts belong to the repository's synthetic CK3 test mod. No game installation is needed for these examples. The captured run passed all 57 editor assertions. Mouse pointers and text carets are absent.
+These captures show the Paradox Modding Toolkit plugin 0.2.2 with px-lsp 0.3.8 in Notepad++ 8.9.8 (Windows x64, dark mode). The scripts belong to the repository's synthetic CK3 test mod. No game installation is needed for these examples. The captured run passed all 57 editor assertions. Mouse pointers and text carets are absent.
 
 ## Outline and highlighting
 

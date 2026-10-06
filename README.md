@@ -4,7 +4,7 @@
 
 Language tools for Crusader Kings III, Victoria 3 and Europa Universalis V mods, powered by [px-lsp](https://github.com/JDeffner/paradox-modding-toolkit). Completion, diagnostics, navigation, rename previews, quick fixes, folding and semantic highlighting run inside Notepad++.
 
-**Release candidate: Notepad++ plugin 0.2.2 with px-lsp 0.3.8.** The bundled server comes from the [PX Toolkit 0.5.5 prerelease](https://github.com/JDeffner/paradox-modding-toolkit/releases/tag/v0.5.5). The plugin, language server and main toolkit have separate version numbers. Until 0.2.2 is published, [0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0) remains the available release. See the [release checks](docs/RELEASING.md).
+**Notepad++ plugin 0.2.2 with px-lsp 0.3.8.** The bundled server comes from the [PX Toolkit 0.5.5 prerelease](https://github.com/JDeffner/paradox-modding-toolkit/releases/tag/v0.5.5). The plugin, language server and main toolkit have separate version numbers. See the [release checks](docs/RELEASING.md).
 
 ## Limited maintenance
 
@@ -16,11 +16,11 @@ Preview a symbol rename across its definition and event reference before applyin
 
 ![Notepad++ showing a scripted effect and a rename preview with before and after values in two files](docs/screenshots/rename-preview.png)
 
-[View all five screenshots](docs/screenshots/README.md) for the outline, references, rename preview, localization quick fix and options. Captured in Notepad++ 8.9.8 dark mode with the plugin 0.2.2 candidate and px-lsp 0.3.8, using a small CK3 test mod.
+[View all five screenshots](docs/screenshots/README.md) for the outline, references, rename preview, localization quick fix and options. Captured in Notepad++ 8.9.8 dark mode with the plugin 0.2.2 and px-lsp 0.3.8, using a small CK3 test mod.
 
 ## Install
 
-The planned 0.2.2 packages target Windows 10 or later. Their download links below will become available when the release is published. For now, [download 0.2.0 (x64 only)](https://github.com/JDeffner/px-toolkit-notepadpp/releases/tag/v0.2.0). Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#release-candidate-022-with-lsp-038).
+The 0.2.2 packages target Windows 10 or later. Choose the package matching the architecture of **Notepad++**, even if Windows has a different architecture. Native editor tests use Notepad++ 8.9.8; see [validation and limits](docs/notepadpp-integration.md#release-022-with-lsp-038).
 
 | Notepad++ architecture | 0.2.2 package |
 |---|---|
@@ -28,7 +28,7 @@ The planned 0.2.2 packages target Windows 10 or later. Their download links belo
 | 64-bit x64 | [PxToolkit-NotepadPlusPlus-0.2.2-win-x64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.2/PxToolkit-NotepadPlusPlus-0.2.2-win-x64.zip) |
 | ARM64 | [PxToolkit-NotepadPlusPlus-0.2.2-win-arm64.zip](https://github.com/JDeffner/px-toolkit-notepadpp/releases/download/v0.2.2/PxToolkit-NotepadPlusPlus-0.2.2-win-arm64.zip) |
 
-1. For the current release, use the 0.2.0 download linked above. After 0.2.2 is published, download the matching ZIP from the table. Use the `PxToolkit-NotepadPlusPlus` package from this repository; the main toolkit's `px-lsp` ZIP contains only the language server. GitHub's **Source code** downloads require building the plugin.
+1. Download the matching ZIP from the table. Use the `PxToolkit-NotepadPlusPlus` package from this repository; the main toolkit's `px-lsp` ZIP contains only the language server. GitHub's **Source code** downloads require building the plugin.
 2. Save your files and close Notepad++.
 3. Extract the whole `PxToolkit` folder into its `plugins` folder, then reopen the editor.
 

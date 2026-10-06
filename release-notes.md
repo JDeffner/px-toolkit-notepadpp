@@ -1,6 +1,6 @@
 # Paradox Modding Toolkit for Notepad++ 0.2.2
 
-Release notes for the 0.2.2 candidate. Complete the [release checks](https://github.com/JDeffner/px-toolkit-notepadpp/blob/main/docs/RELEASING.md) before publishing. This version includes the changes from the unreleased 0.2.1 build; its existing tag and draft remain unchanged.
+This version includes the changes from the unreleased 0.2.1 build.
 
 This release updates the **Notepad++ plugin to 0.2.2** and bundles **px-lsp 0.3.8** with a Windows Node runtime. These are separate version numbers; 0.2.2 is not the version of the main PX Toolkit or its language server.
 
